@@ -1,0 +1,3 @@
+[submodule "python-openimu"]
+	path = python-openimu
+	url = https://github.com/Aceinna/python-openimu.git

@@ -443,8 +443,7 @@ static int input_gnss_data(unsigned char data)
                     }
                     // g_gnss_sol.gnss_update = 1;
                     LED1_Toggle();
-                    LED2_Toggle();
-                    LED3_Toggle();
+
                     if (g_gnss_sol.gnss_fix_type != 0)
                     {
                         g_status.status_bit.gnss_signal_status = 1;
