@@ -1,0 +1,16 @@
+{
+	"name": "STM32F469",
+ 	"version": "1.0.1",
+ 	"description": "STM32F469 MCU Low Level Library",
+ 	"build": {
+ 		"flags": [
+			"-I CMSIS",
+			"-I HAL/Inc",
+			"-I HAL/Inc/Legacy",
+			"-I HAL/Src",
+			"-I ."
+ 		],
+		"libArchive": true,
+		"platforms": "aceinna_imu"
+ 	}
+ }

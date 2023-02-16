@@ -1,0 +1,13 @@
+{
+	"name": "Sensors",
+ 	"version": "1.0.4",
+ 	"description": "OpenIMU330 sensors and storage library",
+ 	"build": {
+ 		"flags": [
+
+			"-I ."
+ 		],
+		"libArchive": true,
+		"platforms": "aceinna_imu"
+ 	}
+ }

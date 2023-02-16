@@ -1,0 +1,72 @@
+{
+	"name": "OpenRTK-base-library",
+ 	"version": "1.0.9",
+ 	"description": "OpenRTK Base Library",
+    "keywords": "sensors, RTK, INS, AI, automotive, navigation",
+ 	"repository":
+    {
+       "type": "git",
+       "url": "https://github.com/Aceinna/openRTK330-lib.git",
+       "branch": "master"
+    },
+	"build": {
+ 		"flags": [
+			"-I STM32F469/include",
+			"-I STM32F469/CMSIS",
+			"-I STM32F469/HAL/Inc",
+			"-I STM32F469/HAL/Inc/Legacy",
+			"-I STM32F469/HAL/Src",
+			"-I STM32F469/OS/Inc",
+			"-I STM32F469/",
+
+			"-I LWIP/arch",
+			"-I LWIP/lwip-1.4.1/src/include",
+			"-I LWIP/lwip-1.4.1/src/include/ipv4",
+			"-I LWIP/lwip-1.4.1/src/include/netif",
+			"-I LWIP/lwip_app/user/inc",
+			"-I LWIP/lwip_app/webserver/inc",
+			"-I LWIP/lwip_app/ntrip/inc" ,
+			"-I LWIP/lwip_app/station/inc" ,
+			"-I LWIP/lwip_app/driver_tcp/inc" ,
+			"-I LWIP/lwip_app/driver_tcp" ,
+			"-I LWIP/",
+
+            "-I mbedTLS/lib/include",
+			"-I mbedTLS/lib/include/mbedtls",
+            "-I mbedTLS/app/inc",
+			"-I mbedTLS/",
+
+			"-I Platform/",
+			"-I Platform/board/include",
+			"-I Platform/filter/include",
+			"-I Platform/driver/include",
+			"-I Platform/cjson/inc",
+			"-I Platform/gnss_data/include",
+            "-I Platform/common/include",
+            "-I Platform/can/include",
+			"-I Platform/bluetooth/include",
+			"-I Platform/crc/include",
+			"-I Platform/serial/include",
+			"-I Platform/config/include",
+			"-I FreeRTOS/include",
+			"-I FreeRTOS/",
+
+			"-I Sensors",
+			"-L Sensors/",	
+			"-l libSensors.a",
+			
+			"-I INS",
+			"-L INS/",	
+			"-l libINS.a",
+
+			"-I OpenARC",
+			"-L OpenARC/",	
+			"-l libOpenARC.a",
+		
+			"-I GNSS"
+	
+		],
+		"libArchive": false,
+        "platforms": "aceinna_imu"
+ 	}
+ }

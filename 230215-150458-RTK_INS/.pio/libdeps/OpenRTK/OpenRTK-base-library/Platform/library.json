@@ -1,0 +1,17 @@
+{
+	"name": "Platform",
+ 	"version": "1.0.5",
+ 	"description": "OpenRTK platform library",
+ 	"build": {
+ 		"flags": [
+			"-I .",
+			"-I CAN/include",
+			"-I Board/include",
+            "-I Filter/include",
+			"-I BT/include",
+			"-I Driver/inc"
+ 		],
+		"libArchive": true,
+		"platforms": "aceinna_imu"
+ 	}
+ }
