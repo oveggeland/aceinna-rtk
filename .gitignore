@@ -1,3 +1,3 @@
 *.bin
-*.venv/
+.aceinna_venv/
 230215-150458-RTK_INS/.pio/build/
