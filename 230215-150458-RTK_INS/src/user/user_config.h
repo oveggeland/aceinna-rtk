@@ -256,7 +256,7 @@ BOOL EEPROM_SaveUserConfig(uint8_t *ptrToUserConfigStruct, uint16_t userConfigSi
 BOOL SaveUserConfig(void);
 BOOL RestoreDefaultUserConfig(void);
 
-void userInitConfigureUnit(void);
+void userInitConfigureUnit(BOOL default_config);
 void update_sys_params(void);
 void apply_can_ecu_settings(void *pConfig);
 int32_t update_user_parameter(uint32_t number, uint8_t* data, BOOL offset);

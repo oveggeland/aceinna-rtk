@@ -121,13 +121,13 @@ void CreateTasks(void)
     //         ;
     // }
 
-    osThreadDef(CAN1939_TASK, TaskCANCommunicationJ1939, osPriorityLow, 0, TASK_CAN1939_STACK);
-    iD = osThreadCreate(osThread(CAN1939_TASK), NULL);
-    if (iD == NULL)
-    {
-        while (1)
-            ;
-    }
+    //osThreadDef(CAN1939_TASK, TaskCANCommunicationJ1939, osPriorityLow, 0, TASK_CAN1939_STACK);
+    //iD = osThreadCreate(osThread(CAN1939_TASK), NULL);
+    //if (iD == NULL)
+    //{
+    //    while (1)
+    //        ;
+    //}
 }
 
 
@@ -149,13 +149,13 @@ int main(void)
     uart_driver_install(UART_BT,&uart_bt_rx_fifo,&huart_bt,460800);
     fifo_init(&fifo_user_uart, fifo_user_uart_buf, GPS_BUFF_SIZE);
 
-    DelayMs(10000);    //Delay, in case the usb driver is not installed on computer
+    // DelayMs(10000);    //Delay, in case the usb driver is not installed on computer
 
     ResetForEnterBootMode();  // normal or iap mode
 
     InitFactoryCalibration();
     ApplyFactoryConfiguration();
-    userInitConfigureUnit();
+    userInitConfigureUnit(true);
     ins_init();
 
     int wheeltick_pin_mode = get_wheeltick_pin_mode();

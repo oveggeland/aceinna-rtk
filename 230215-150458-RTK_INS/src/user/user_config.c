@@ -76,7 +76,7 @@ const UserConfigurationStruct gDefaultUserConfig = {
     .rotation_rbvy          = 0.0,
     .rotation_rbvz          = 0.0,
     
-    .eth_mode           = ETHMODE_DHCP,
+    .eth_mode           = ETHMODE_STATIC,
     .static_ip          = {192, 168, 137, 110},
 	.static_netmask     = {255, 255, 255, 0},
 	.static_gateway     = {192, 168, 137, 1},
@@ -790,10 +790,10 @@ BOOL RestoreDefaultUserConfig(void)
 /** ***************************************************************************
  * @name userInitConfigureUnit
  * @brief init user configuration structure 
- * @param N/A
+ * @param [in] default_config, wheter to load default config or from EEPROM
  * @retval N/A
  ******************************************************************************/
-void userInitConfigureUnit(void)
+void userInitConfigureUnit(BOOL default_config)
 {
     uint16_t size = sizeof(gUserConfiguration);
 
@@ -803,7 +803,7 @@ void userInitConfigureUnit(void)
     printf("configValid = %d\r\n", configValid);
 #endif
 
-    if (configValid == TRUE) {
+    if (!default_config && configValid == TRUE) {
         // Here we have validated User configuration image.
         // Load it from eeprom into ram on top of the default configuration
         EEPROM_LoadUserConfig((uint8_t*)&gUserConfiguration, &size);
