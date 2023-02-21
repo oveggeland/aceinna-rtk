@@ -1,0 +1,2 @@
+openrtk_msg:openrtk_ros
+-DCATKIN_DEVEL_PREFIX=/home/oskar/aceinna-rtk/ros_driver/devel -DCMAKE_INSTALL_PREFIX=/home/oskar/aceinna-rtk/ros_driver/install -G Unix Makefiles

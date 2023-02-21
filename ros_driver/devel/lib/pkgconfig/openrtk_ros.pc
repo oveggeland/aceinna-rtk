@@ -1,0 +1,8 @@
+prefix=/home/oskar/aceinna-rtk/ros_driver/devel
+
+Name: openrtk_ros
+Description: Description of openrtk_ros
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

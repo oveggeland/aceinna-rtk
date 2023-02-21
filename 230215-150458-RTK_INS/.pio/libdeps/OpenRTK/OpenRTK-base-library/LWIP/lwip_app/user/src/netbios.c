@@ -260,6 +260,14 @@ netbios_name_encoding(char *name_enc, char *name_dec, int name_dec_len)
 static void
 netbios_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, ip_addr_t *addr, u16_t port)
 {
+  // OSKAR Testing receiving connection. This function was entered after broacasting on 192.168.137.255 with port 137
+  /*
+  while (true)
+  {
+    LED2_Toggle();
+    osDelay(500);
+  }*/
+  
   LWIP_UNUSED_ARG(arg);
 
   /* if packet is valid */
@@ -341,6 +349,18 @@ void netbios_init(void)
     pcb->so_options |= SOF_BROADCAST;
     udp_bind(pcb, IP_ADDR_ANY, NETBIOS_PORT);
     udp_recv(pcb, netbios_recv, pcb);
+
+
+    // OSKAR: LOOP AND SEND UDP BROADCAST MESSAGES TO TEST CONNECTION. THIS WORKS!
+    /*
+    struct pbuf *q;
+    q = pbuf_alloc(PBUF_TRANSPORT, sizeof(struct netbios_resp), PBUF_RAM);
+    while (true)
+    {
+      udp_sendto(pcb, q, IP_ADDR_BROADCAST, NETBIOS_PORT);
+      osDelay(500);
+      LED2_Toggle();
+    }*/
   }
 }
 #endif /* LWIP_UDP */
