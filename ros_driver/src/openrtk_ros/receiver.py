@@ -1,3 +1,7 @@
+"""
+Simple network receiver for ethernet debugging
+"""
+
 from socket import *
 import time
 
@@ -6,4 +10,4 @@ s.bind(('0.0.0.0',137))
 
 while True:
     m=s.recvfrom(1024)
-    print (time.time())
+    print ("Received message at:", time.time())

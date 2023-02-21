@@ -11,10 +11,9 @@ class netbios_query:
         self.nqs = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.nqs.setblocking(False)
         self.nqs.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        self.nqs.bind(('0.0.0.0',137))
-        #self.nqs.bind(('', 138))
+        #self.nqs.bind(('0.0.0.0',137))
 
-        self.network = '<broadcast>'
+        self.network = '192.168.137.255'
         self.QueryData = [
         b"\xa9\xfb",  # Transaction ID
         b"\x01\x10",  # Flags Query
