@@ -260,14 +260,7 @@ netbios_name_encoding(char *name_enc, char *name_dec, int name_dec_len)
 static void
 netbios_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, ip_addr_t *addr, u16_t port)
 {
-  // OSKAR Testing receiving connection. This function was entered after broacasting on 192.168.137.255 with port 137
-  /*
-  while (true)
-  {
-    LED2_Toggle();
-    osDelay(500);
-  }*/
-  
+  // OSKAR Testing receiving connection. This function was entered after broacasting on 192.168.137.255 with port 137  
   LWIP_UNUSED_ARG(arg);
 
   /* if packet is valid */

@@ -152,7 +152,7 @@ void driver_interface(void)
     
     switch (driver_client.client_state)
     {
-        case CLIENT_STATE_CONNECT:
+        case CLIENT_STATE_CONNECT:            
             if(server_ip.addr == 0)
             {
                 break;

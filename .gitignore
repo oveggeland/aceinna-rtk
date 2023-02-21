@@ -1,3 +1,7 @@
 *.bin
 .aceinna_venv/
 230215-150458-RTK_INS/.pio/build/
+ros_driver/build/
+ros_driver/devel/
+ros_driver/.catkin_workspace
+aceinna_dev.code-workspace
