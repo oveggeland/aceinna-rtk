@@ -76,15 +76,14 @@ void TaskDataAcquisition(void const *argument)
         /* GNSS/INS fusion */
         ins_fusion();
 
-        ProcessUserCommands();
-
+        // ProcessUserCommands();
         debug_com_process();
 
         /* solution packets output from UART*/
-        send_continuous_packet();
+        //send_continuous_packet();
 
         /* solution packets output from bluetooth*/
-        send_ins_to_bt();
+        //send_ins_to_bt();
 
     }
 }

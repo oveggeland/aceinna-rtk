@@ -17,15 +17,15 @@ const float r2d = 180/3.14159265;
 #define     UART_STOPBIT        (1)                     /**1:One Bit; 2:Two Bit; 1.5:One Point Five**/
 
 /******NetBios Addr and Port******/
-#define     NETBIOS_BROADCAST_ADDR  "192.168.20.255"
-#define     NETBIOS_OADCAST_PORT    137 
+#define     NETBIOS_BROADCAST_ADDR  "192.168.137.255"
+#define     NETBIOS_BROADCAST_PORT    137 
 
-#define     LOCAL_PORT              2204                        //
-#define     LOCAL_IP_ADDRESS        "192.168.20.203"            //here ,it is your ROS IP ,you should change it
+#define     LOCAL_PORT 2204
+#define     LOCAL_IP_ADDRESS "192.168.137.69"           //here ,it is your ROS IP ,you should change it
 #define     PACKAGE_TYPE_IDX        2
 #define     PAYLOAD_LEN_IDX         4
-#define     MAX_FRAME_LIMIT         256  // assume max len of frame is smaller than MAX_FRAME_LIMIT.
-#define     OPENRTK_GET_HOSTIP      "python3 ~/catkin_ws/src/openrtk_ros/netbios.py"
+#define     MAX_FRAME_LIMIT         512  // assume max len of frame is smaller than MAX_FRAME_LIMIT.
+#define     OPENRTK_GET_HOSTIP      "python3 /home/oskar/aceinna-rtk/ros_driver/src/openrtk_ros/netbios.py"
 
 const uint8_t HEADER[2] = {0X55, 0X55};
 const uint8_t HandStr[] = {"hello pc i'm openrtk_data"};
@@ -44,7 +44,11 @@ RTKDriver::RTKDriver(ros::NodeHandle nh)
     sockstrlen = sizeof(struct sockaddr_in); 
     sock_Cli = -1;
     /*******server Addr Init********/   
-    sock_Ser = socket(AF_INET, SOCK_STREAM, 0);   
+    sock_Ser = socket(AF_INET, SOCK_STREAM, 0);  
+    int opt = 1;
+    setsockopt(sock_Ser, SOL_SOCKET,
+                SO_REUSEADDR | SO_REUSEPORT, &opt,
+                sizeof(opt));
     memset(&addr_server, 0, sizeof(addr_server));   
     memset(&addr_sensor, 0, sizeof(addr_sensor));
     addr_server.sin_family = AF_INET;    
@@ -66,6 +70,9 @@ RTKDriver::~RTKDriver()
 
 void RTKDriver::Start()
 {
+    // Give host IP info to aceinna rtk
+    system(OPENRTK_GET_HOSTIP);
+    
     int8_t hostname[20];
     uint8_t cnt = 0;
     // Set and open serial port.
@@ -86,6 +93,13 @@ void RTKDriver::Start()
         cout << "bind server addr error" << endl; 
         usleep(1000); // 1 ms   
         cnt++;
+    }
+    if (cnt < 10){
+        cout << "Finish binding socket" << endl;
+    }
+    else{
+        cout << "Could not bind to socket" << endl;
+        ros::shutdown();
     }
 
     cnt = 0;
@@ -110,7 +124,7 @@ void RTKDriver::Start()
         inet_ntop(AF_INET,&addr_sensor.sin_addr,(char*)hostname,sizeof(hostname));  
         cout << "client name is " << hostname << "port is " << addr_sensor.sin_port << endl;
     }
-    //system(OPENRTK_GET_HOSTIP);
+
     /*End TCP Server Init*/
 
     m_uart_exit.lock();
@@ -291,13 +305,13 @@ void RTKDriver::ThreadGetDataEth(void)
     
     while(1)
     {
-	recvNum = recvfrom(sock_Cli, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&addr_sensor, &sockstrlen); 
+        recvNum = recvfrom(sock_Cli, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&addr_sensor, &sockstrlen); 
 
-	if(recvNum < 0)    
-	{    
-	    cout << "recvfrom error:" <<endl;     
-            continue; 
-	}   
+        if(recvNum < 0)    
+        {    
+            cout << "recvfrom error:" <<endl;     
+                continue; 
+        }   
 
         if((recvBuf[0] == 0x68) && (recvBuf[1] == 0x65))        //we receive string "hello pc,i'm openrtk_data", and should send back string "log debug on"
         {                                                       //here we just check 'h' and 'e', it is easier than strcmp or others
@@ -306,12 +320,17 @@ void RTKDriver::ThreadGetDataEth(void)
         } 
         else
         {
+            cout << "Receive num" << recvNum << endl;
+            memset(packet_buf, 0, MAX_FRAME_LIMIT);
+            memcpy(packet_buf, &recvBuf[0], recvNum);  
+            cout << packet_buf << endl;
             recvNum--;                                      //to aviod Array out of bounds
             index = 0;
             while(index < recvNum)
             {
                 if((recvBuf[index] == HEADER[0]) && (recvBuf[index+1] == HEADER[1]))
                 {
+                    cout << recvBuf[index] << recvBuf[index] << endl;
                     packet_len = recvBuf[index + 4] + 7;                            //you can refer to user meanual
                     memcpy(packet_buf, &recvBuf[index], packet_len);                //here we use another buff, it seems more clear
                     packet_crc = 256 * packet_buf[packet_len - 2] + packet_buf[packet_len - 1];
@@ -341,6 +360,7 @@ void RTKDriver::ThreadGetDataEth(void)
 
 void RTKDriver::ParseFrame(uint8_t* frame, uint16_t len)
 {
+    cout << "Parse frame" << endl;
     string packetType;
     packetType.push_back(frame[PACKAGE_TYPE_IDX]);
     packetType.push_back(frame[PACKAGE_TYPE_IDX + 1]);

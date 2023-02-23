@@ -41,20 +41,18 @@ limitations under the License.
 void EthTask(void const *argument)
 {
 	ethernet_init(); // init ethernet, maybe delay util spp
-
-    aceinna_client_init(GetUnitSerialNum());
-
+    /*
     while (g_ptr_gnss_sol->gnss_fix_type != 1)
     {
         OS_Delay(1000);
     }
-	
+	*/
+    tcp_driver_data_fifo_init();	
+
 	while (1)
 	{
-#ifdef  USE_TCP_DRIVER
-        driver_interface();
-#endif
-        station_tcp_interface();
+        //driver_interface();
+        driver_output_data_interface();
 	}
 }
 
