@@ -17,17 +17,42 @@ using namespace std;
 #include <signal.h>
 #include <ros/ros.h>
 #include <sensor_msgs/Imu.h>
+#include <sensor_msgs/NavSatFix.h>
 #include <tf/transform_broadcaster.h>
 #include "serial/serial.h"
 #include "rtk.h"
 #include "macro.h"
 #include "protocol.h"
-#include "openrtk_msg/openrtk_imu.h"
-#include "openrtk_msg/openrtk_gnss.h"
-#include "openrtk_msg/openrtk_ins.h"
 #include <sys/socket.h>     
 #include <netinet/in.h>     
 #include <arpa/inet.h>  
+
+// For defining gnss messages
+typedef struct  {
+    uint16_t gps_week;
+    uint32_t gps_tow; // gps Time Of Week, miliseconds
+    uint8_t num_sats; // num of satellites in the solution 
+
+    double latitude; // latitude ,  degrees 
+    double longitude; // longitude,  degrees 
+    double height; // above mean sea level [m]
+    double pos_ecef[3];
+    float vel_ned[3]; // velocities,  m/s  NED (North East Down) x, y, z
+    float heading; // [deg]
+
+    float dops[5];
+    float sol_age;
+
+	float std_lat;	//!< latitude standard deviation (m)
+	float std_lon;	//!< longitude standard deviation (m)
+	float std_hgt;	//!< height standard deviation (m)
+    float std_vn;
+    float std_ve;
+    float std_vd;
+
+    uint8_t rov_n;
+} gnss_solution_t;
+
 
 class RTKDriver
 {
@@ -39,27 +64,18 @@ public:
     void Stop();
     bool Spin();
 
-    static void SigintHandler(int sig);
-    void ThreadGetDataUart(void);
-    void ThreadGetDataEth(void);
-    //void ThreadGetDataCAN(void);
+    void PublishGNSS(gnss_solution_t* p_gnss);
 
-    void ParseFrame(uint8_t* frame, uint16_t len);
-    void Handle_RtkGNSSMessage(uint8_t* frame, uint16_t len);
-    void Handle_RtkIMUMessage(uint8_t* frame, uint16_t len);
-    void Handle_RtkINSMessage(uint8_t* frame, uint16_t len);    /* Process INS Msg */
+    static void SigintHandler(int sig);
+    void ThreadGetDataEth(void);
 
     uint16_t calcCRC(uint8_t *ptr, uint32_t num);
     string Bytestohexstring(uint8_t* bytes,int bytelength);
 
 private:
     ros::NodeHandle m_nh;
-    ros::Publisher rtk_pub_imu;
-    ros::Publisher rtk_pub_gnss;
-    ros::Publisher rtk_pub_ins;
-    CRTK m_rtk;
-    string m_topic;
-    serial::Serial* m_pserial;
+    ros::Publisher m_pub_imu;
+    ros::Publisher m_pub_gnss;
 
     /*******Eth Port******/
     struct sockaddr_in addr_sensor;  
@@ -69,16 +85,8 @@ private:
     int32_t sock_Ser; 
     /*******Eth Port******/
 
-    std::mutex m_mt_buf;
-    queue<uint8_t> m_uartBuf;
-    queue<uint8_t> m_ethBuf;
-
-    bool m_uartBexit;
     bool m_EthBexit;
-    std::mutex m_uart_exit;
     std::mutex m_eth_exit;
-    std::thread m_GetUartDataThread;
     std::thread m_GetEthDataThread;
-    std::thread m_GetCANDataThread;
 };
 

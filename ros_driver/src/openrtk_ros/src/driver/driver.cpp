@@ -8,26 +8,26 @@
  * 
 *******************************************************/
 #include "driver.h"
-const float r2d = 180/3.14159265;
 
-#define     UART_BAUDRATE       (460800)                /**You should change it according to the actual setting**/
-#define     UART_PORT_ID        ("/dev/ttyUSB0")        /**You should change it according to the actual setting**/
-#define     UART_PARITY         0                       /**0:None; 1:Odd; 2:Even; 3:Mark; 4:Space**/
-#define     UART_BYTESIZE       8
-#define     UART_STOPBIT        (1)                     /**1:One Bit; 2:Two Bit; 1.5:One Point Five**/
+// General macros
+#define RAD2DEG 180/3.14159265
+#define SECONDS_IN_WEEK 604800
 
-/******NetBios Addr and Port******/
-#define     NETBIOS_BROADCAST_ADDR  "192.168.137.255"
-#define     NETBIOS_BROADCAST_PORT    137 
+// Macros for GNSS messages
+#define RECV_BUFFER_SIZE 2000
+#define GNSS_HEADER "$GNSS"
 
+// Macros for IMU messages
+#define IMU_HEADER "$IMU"
+
+// Network macros
 #define     LOCAL_PORT 2204
 #define     LOCAL_IP_ADDRESS "192.168.137.69"           //here ,it is your ROS IP ,you should change it
-#define     PACKAGE_TYPE_IDX        2
-#define     PAYLOAD_LEN_IDX         4
-#define     MAX_FRAME_LIMIT         512  // assume max len of frame is smaller than MAX_FRAME_LIMIT.
 #define     OPENRTK_GET_HOSTIP      "python3 /home/oskar/aceinna-rtk/ros_driver/src/openrtk_ros/netbios.py"
 
-const uint8_t HEADER[2] = {0X55, 0X55};
+#define HANDSTR "hello pc i'm openrtk_data"
+#define HANDBK "log debug on\r\n"
+
 const uint8_t HandStr[] = {"hello pc i'm openrtk_data"};
 const uint8_t Handbk[] = {"log debug on\r\n"};
 
@@ -35,14 +35,11 @@ RTKDriver::RTKDriver(ros::NodeHandle nh)
     : m_nh(nh)
 {
     cout << "RTKDriver:RTKDriver()" << endl;
-    m_pserial = nullptr;
-    /* You need to change PortID and Baudrate, others use default*/
-    m_rtk.m_port = string(UART_PORT_ID);
-    m_rtk.m_baud = UART_BAUDRATE;
-
+    
     /*Eth init*/
     sockstrlen = sizeof(struct sockaddr_in); 
     sock_Cli = -1;
+
     /*******server Addr Init********/   
     sock_Ser = socket(AF_INET, SOCK_STREAM, 0);  
     int opt = 1;
@@ -55,12 +52,9 @@ RTKDriver::RTKDriver(ros::NodeHandle nh)
     addr_server.sin_addr.s_addr = inet_addr(LOCAL_IP_ADDRESS); 
     addr_server.sin_port = htons(LOCAL_PORT); 
 
-    ROS_INFO("device: %s", m_rtk.m_port.c_str());
-    ROS_INFO("baud: %d", m_rtk.m_baud);
-
-    rtk_pub_imu  = m_nh.advertise<openrtk_msg::openrtk_imu>("topic_rtk_imu", 100);
-    rtk_pub_gnss = m_nh.advertise<openrtk_msg::openrtk_gnss>("topic_rtk_gnss", 100);
-    rtk_pub_ins  = m_nh.advertise<openrtk_msg::openrtk_ins>("topic_rtk_ins", 100);
+    // Define publishers
+    m_pub_imu  = m_nh.advertise<sensor_msgs::Imu>("imu_msg", 100);
+    m_pub_gnss = m_nh.advertise<sensor_msgs::NavSatFix>("gnss_msg", 100);
 }
 
 RTKDriver::~RTKDriver()
@@ -71,20 +65,14 @@ RTKDriver::~RTKDriver()
 void RTKDriver::Start()
 {
     // Give host IP info to aceinna rtk
-    system(OPENRTK_GET_HOSTIP);
-    
+    int retval = system(OPENRTK_GET_HOSTIP);
+    if (retval == -1){
+        cout << "System call to openrtk failed" << endl;
+        ros::shutdown();
+    }
+
     int8_t hostname[20];
     uint8_t cnt = 0;
-    // Set and open serial port.
-    m_pserial = new serial::Serial(m_rtk.m_port, m_rtk.m_baud, serial::Timeout::simpleTimeout(10));
-
-    while (!m_pserial->isOpen())
-    {
-        ROS_WARN("Keep trying to open the device in 0.1 second period...");
-        usleep(100000); // 100 ms
-        m_pserial->open();
-    }
-    ROS_INFO("Device is opened successfully. [%s:%d]", m_rtk.m_port.c_str(), m_rtk.m_baud);
 
     /*Start TCP Server Init*/
     while((bind(sock_Ser,(struct sockaddr *)&addr_server,sockstrlen) < 0)           /*try to bind at most 10s*/
@@ -93,13 +81,6 @@ void RTKDriver::Start()
         cout << "bind server addr error" << endl; 
         usleep(1000); // 1 ms   
         cnt++;
-    }
-    if (cnt < 10){
-        cout << "Finish binding socket" << endl;
-    }
-    else{
-        cout << "Could not bind to socket" << endl;
-        ros::shutdown();
     }
 
     cnt = 0;
@@ -127,35 +108,21 @@ void RTKDriver::Start()
 
     /*End TCP Server Init*/
 
-    m_uart_exit.lock();
-    m_uartBexit = false;
-    m_uart_exit.unlock();
-
     m_eth_exit.lock();                  /* we just init , you can use it in data prosess thread*/
     m_EthBexit = false;
     m_eth_exit.unlock();
-
-    /* UART port is enabled by default */
-    //m_GetUartDataThread = std::thread(&RTKDriver::ThreadGetDataUart, this);
 
     /* Comment the line above, and uncomment the line below to enable Ethernet */
     m_GetEthDataThread  = std::thread(&RTKDriver::ThreadGetDataEth, this);    
 
     signal(SIGINT, SigintHandler);
-    Spin();
+    ros::spin();
 }
+
 
 void RTKDriver::Stop()
 {
     cout << "RTKDriver::Stop()" << endl;
-    if(m_pserial)
-    {
-        if(m_pserial->isOpen())
-        {
-            m_pserial->close();
-        }
-        SAFEDELETE(m_pserial);
-    }
 
     close(sock_Ser);        //close Eth server and client socket
     close(sock_Cli);
@@ -164,9 +131,6 @@ void RTKDriver::Stop()
     m_EthBexit = true;
     m_eth_exit.unlock();
 
-    m_uart_exit.lock();
-    m_uartBexit = true;
-    m_uart_exit.unlock();
     usleep(1000);
 }
 
@@ -177,135 +141,48 @@ void RTKDriver::SigintHandler(int sig)
 	ros::shutdown();
 }
 
-bool RTKDriver::Spin()
-{
-    double rate_ = 200; // Hz
-    ros::Rate loop_rate(rate_);
+void RTKDriver::PublishGNSS(gnss_solution_t* p_gnss){
+    sensor_msgs::NavSatFix gnss_msg;
 
-    size_t max_sz = 256;
-    uint8_t *buf = new uint8_t[max_sz];
-    //size_t max_eth = 1472;                        /****** it is better to get data here,and push into fifo *******/
-    //uint8_t *recvBuf = new uint8_t[max_sz];
-    //uint16_t  recvNum = 0;
-    while (ros::ok())
-    {
-        /*
-         * ros::ok() return false once:
-         *  1. ros::shutdown() has been called and is finished
-         *  2. SIGINT (Ctrl-C)
-         *  3. ros::NodeHandles were destroyed.
-         *  4. Node with same name appears in ROS network.
-	     */
+    // Time stamp
+    uint32_t secs = p_gnss->gps_week*SECONDS_IN_WEEK + (uint32_t)(p_gnss->gps_tow / 1000);
+    uint32_t n_secs = (p_gnss->gps_tow - ((uint32_t)(p_gnss->gps_tow / 1000))*1000)*1e6;
+    ros::Time stamp(secs, n_secs); // week to seconds, gps_tow to nanoseconds (for simplicity)
 
-        size_t sz = m_pserial->read(buf, max_sz);
+    gnss_msg.header.stamp = stamp;
 
-        m_mt_buf.lock();
-        for (size_t i = 0; i < sz; i++)
-        {
-            m_uartBuf.push(buf[i]);
-        }
-        m_mt_buf.unlock();
+    // Add coordinates
+    gnss_msg.latitude = p_gnss->latitude*RAD2DEG;
+    gnss_msg.longitude = p_gnss->longitude*RAD2DEG;
+    gnss_msg.altitude = p_gnss->height;
 
-        ros::spinOnce();
-        loop_rate.sleep();
-    }
+    // Covariance
+    gnss_msg.position_covariance_type = sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
 
-    Stop();
-
-    return true;
-};
-
-void RTKDriver::ThreadGetDataUart()
-{
-    cout << "RTKDriver::ThreadGetDataUart()" << endl;
-
-    deque<uint8_t> sync_pattern (2, 0);
-	uint8_t* buf = new uint8_t[MAX_FRAME_LIMIT];
-    bool find_header = false;
-    uint16_t payload_len = 0;
-    uint8_t d = 0;
-	int idx = 0;
-
-    while (1)
-    {
-        m_uart_exit.lock();
-        if(m_uartBexit) 
-        {
-            m_uart_exit.unlock();
-            break;
-        }
-        m_uart_exit.unlock();
-
-        m_mt_buf.lock();
-        if (m_uartBuf.empty()) 
-        {
-            m_mt_buf.unlock();
-            usleep(1000); // 1ms
-            continue;
-        }
-        d = m_uartBuf.front();
-        m_uartBuf.pop();
-        m_mt_buf.unlock();
-        
-        if(find_header)
-        {
-            buf[++idx] = d;
-
-            if (PAYLOAD_LEN_IDX == idx)
-            {
-                payload_len = buf[PAYLOAD_LEN_IDX];
-            }
-            else if ( (2 + 2 + 1 + payload_len + 2) == (idx + 1))  // 2: len of header 'UU'; 2: package type 'a1'; 1: payload len; 2:len of checksum.
-            {    
-                find_header = false;
-                // checksum
-                uint16_t packet_crc = 256 * buf[idx-1] + buf[idx];
-                if (packet_crc == calcCRC(&buf[PACKAGE_TYPE_IDX], idx-3)) // 4: len of header 'UU', and len of checksum.
-                {
-                    // find a whole frame
-                    ParseFrame(buf, idx+1);
-                }
-                else
-                {
-                    cout << "CRC error! : " << Bytestohexstring(buf, idx + 1) << endl;
-                }
-            }
-
-            if (payload_len > MAX_FRAME_LIMIT || idx > MAX_FRAME_LIMIT)
-            {
-                find_header = false;
-                payload_len = 0;
-    			memset(buf, MAX_FRAME_LIMIT, 0);
-            }
-        }
-        else  // if hasn't found header 'UU'
-        {
-            sync_pattern.emplace_front(d);
-            if (sync_pattern[0] == HEADER[0] && sync_pattern[1] == HEADER[1])
-            {
-                idx = 1;
-    			memcpy(buf, HEADER, 2);
-                find_header = true;
-                sync_pattern[0] = 0;
-            }
-            sync_pattern.resize(2, 0);
-        }
-    }
+    // Publish
+    m_pub_gnss.publish(gnss_msg);
 }
+
 
 /******here we just use socket*****/
 void RTKDriver::ThreadGetDataEth(void)
 { 
-    uint16_t index = 0;
-    int32_t  recvNum = 0;
-    uint8_t  recvBuf[1472] = {0};
-    uint16_t packet_crc = 0;
-    uint16_t packet_len = 0;
-    uint8_t  packet_buf[MAX_FRAME_LIMIT] = {0};
+    uint8_t recvNum = 0;
+    uint8_t  recvBuf[RECV_BUFFER_SIZE] = {0};
+
+    gnss_solution_t gnss_data = {0};
+    
+    uint8_t* gnss_payloads[] = {(uint8_t*)&gnss_data.gps_week, (uint8_t*)&gnss_data.gps_tow,
+                                            (uint8_t*)&gnss_data.latitude, (uint8_t*)&gnss_data.longitude, (uint8_t*)&gnss_data.height};
+                                            //(uint8_t*)&gnss_data.std_lat, (uint8_t*)&gnss_data.std_lon, (uint8_t*)&gnss_data.std_hgt}; Don't think this is available
+    uint8_t gnss_payload_sizes[] = {sizeof(gnss_data.gps_week), sizeof(gnss_data.gps_tow),
+                                sizeof(gnss_data.latitude), sizeof(gnss_data.longitude), sizeof(gnss_data.height)};
+                                //sizeof(gnss_data.std_lat), sizeof(gnss_data.std_lon), sizeof(gnss_data.std_hgt)}; Don't think this is available
     
     while(1)
     {
-        recvNum = recvfrom(sock_Cli, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&addr_sensor, &sockstrlen); 
+        memset(recvBuf, 0, sizeof(recvBuf));
+    	recvNum = recvfrom(sock_Cli, recvBuf, sizeof(recvBuf), 0, (struct sockaddr*)&addr_sensor, &sockstrlen); 
 
         if(recvNum < 0)    
         {    
@@ -313,81 +190,31 @@ void RTKDriver::ThreadGetDataEth(void)
                 continue; 
         }   
 
-        if((recvBuf[0] == 0x68) && (recvBuf[1] == 0x65))        //we receive string "hello pc,i'm openrtk_data", and should send back string "log debug on"
-        {                                                       //here we just check 'h' and 'e', it is easier than strcmp or others
+        if((recvBuf[0] == 0x68) && (recvBuf[1] == 0x65)){
             sendto(sock_Cli, Handbk, sizeof(Handbk), 0, (struct sockaddr*)&addr_sensor, sockstrlen);
             cout << "Hand Back" << endl;
         } 
-        else
-        {
-            cout << "Receive num" << recvNum << endl;
-            memset(packet_buf, 0, MAX_FRAME_LIMIT);
-            memcpy(packet_buf, &recvBuf[0], recvNum);  
-            cout << packet_buf << endl;
-            recvNum--;                                      //to aviod Array out of bounds
-            index = 0;
-            while(index < recvNum)
-            {
-                if((recvBuf[index] == HEADER[0]) && (recvBuf[index+1] == HEADER[1]))
-                {
-                    cout << recvBuf[index] << recvBuf[index] << endl;
-                    packet_len = recvBuf[index + 4] + 7;                            //you can refer to user meanual
-                    memcpy(packet_buf, &recvBuf[index], packet_len);                //here we use another buff, it seems more clear
-                    packet_crc = 256 * packet_buf[packet_len - 2] + packet_buf[packet_len - 1];
 
-                    if (packet_crc == calcCRC(&packet_buf[PACKAGE_TYPE_IDX], packet_len - 4)) // 4: len of header 'UU', and len of checksum.
-                    {
-                        // find a whole frame
-                        ParseFrame(packet_buf, packet_len);
-                        //cout << "packet_buf : " << Bytestohexstring(packet_buf, packet_len) << endl;
-                    }
-                    else
-                    {
-                        cout << "Buf data error! : " << Bytestohexstring(packet_buf, packet_len) << endl;
-                        cout << "please check header and CRC" << endl;
-                    }        
-                    index += packet_len;
-                }
-                else
-                {
-                    index++;                    
-                }
+        else if(strstr((const char*)recvBuf, GNSS_HEADER)){
+            // Wiho we have GNSS data coming in :D
+            cout << GNSS_HEADER << endl;
+
+            uint16_t gnss_payload_head = sizeof(GNSS_HEADER);
+            for (uint32_t i = 0; i < sizeof(gnss_payload_sizes); i++){
+                memcpy(gnss_payloads[i], &recvBuf[gnss_payload_head], gnss_payload_sizes[i]);
+                gnss_payload_head = gnss_payload_head + gnss_payload_sizes[i];
             }
+
+            PublishGNSS(&gnss_data); 
+        }
+
+        else if(strstr((const char*)recvBuf, IMU_HEADER)){
+            cout << IMU_HEADER << endl;
         }
 		usleep(1000);
     }
 }
 
-void RTKDriver::ParseFrame(uint8_t* frame, uint16_t len)
-{
-    cout << "Parse frame" << endl;
-    string packetType;
-    packetType.push_back(frame[PACKAGE_TYPE_IDX]);
-    packetType.push_back(frame[PACKAGE_TYPE_IDX + 1]);
-
-    if(m_rtk.m_packetType.compare(packetType) != 0)
-    {
-        m_rtk.m_packetType = packetType;
-        ROS_INFO("PACKET TYPE:%s", packetType.c_str());
-    }
-
-    if (m_rtk.m_packetType.compare("s1") == 0)
-    {
-        Handle_RtkIMUMessage(frame, len);
-    }
-    else if (m_rtk.m_packetType.compare("g1") == 0)
-    {
-        Handle_RtkGNSSMessage(frame, len);
-    }
-    else if (m_rtk.m_packetType.compare("i1") == 0)
-    {
-        Handle_RtkINSMessage(frame, len);
-    }
-    else
-    {
-        ROS_WARN("Unknown Packet Type!");
-    }
-}
 
 /*******************************************************************************
 * FUNCTION: calcCRC calculates a 2-byte CRC on serial data using 
@@ -432,118 +259,3 @@ string RTKDriver::Bytestohexstring(uint8_t* bytes,int bytelength)
   }
   return str;  
 }  
-
-/***Handle RTK IMU Message***/
-void RTKDriver::Handle_RtkIMUMessage(uint8_t* frame, uint16_t len)
-{
-    // Check size of frame.
-    if (len - 7 != sizeof(stRTKIMUS1)) // 7: UU (2), packet type(2), playload length(1), crc(2).
-    {
-        ROS_WARN("RTK_IMU Frame size error!");
-        return;
-    }
-
-    stRTKIMUS1 *S1Msg = (stRTKIMUS1*)(&frame[5]);
-    openrtk_msg::openrtk_imu imu_data;
-
-    imu_data.header.frame_id = "RTK_IMU";
-    imu_data.header.stamp = ros::Time::now();
-
-    /*****to avoid byte alignment problem, 
-     * it's better to Assignment one by one*****/
-    imu_data.gps_week       = S1Msg->gps_week;
-    imu_data.gps_millisecs  = S1Msg->gps_millisecs;
-    imu_data.x_acceleration = S1Msg->x_acceleration;
-    imu_data.y_acceleration = S1Msg->y_acceleration;
-    imu_data.z_acceleration = S1Msg->z_acceleration;
-    imu_data.x_gyro_rate    = S1Msg->x_gyro_rate;
-    imu_data.y_gyro_rate    = S1Msg->y_gyro_rate;
-    imu_data.z_gyro_rate    = S1Msg->z_gyro_rate;
-
-    rtk_pub_imu.publish(imu_data);
-}
-
-/***Handle RTK INS Message***/
-void RTKDriver::Handle_RtkINSMessage(uint8_t* frame, uint16_t len)
-{
-    // Check size of frame.
-    if (len - 7 != sizeof(stRTKINSI1)) // 7: UU (2), packet type(2), playload length(1), crc(2).
-    {
-        ROS_WARN("RTK INS Frame size error!");
-        return;
-    }
-
-    stRTKINSI1 *I1Msg = (stRTKINSI1*)(&frame[5]);
-    openrtk_msg::openrtk_ins ins_data;
-
-    ins_data.header.frame_id = "RTK_INS";
-    ins_data.header.stamp = ros::Time::now();
-
-    /*****to avoid byte alignment problem, 
-     * it's better to Assignment one by one*****/
-    ins_data.gps_week       = I1Msg->gps_week;
-    ins_data.gps_millisecs  = I1Msg->gps_millisecs;
-    ins_data.ins_status     = I1Msg->ins_status;
-    ins_data.ins_position_type  = I1Msg->ins_position_type;
-    ins_data.latitude           = I1Msg->latitude;
-    ins_data.longitude          = I1Msg->longitude;
-    ins_data.height             = I1Msg->height;
-    ins_data.north_vel          = I1Msg->north_vel;
-    ins_data.east_vel           = I1Msg->east_vel;
-    ins_data.up_vel             = I1Msg->up_vel;
-    ins_data.roll               = I1Msg->roll;
-    ins_data.pitch              = I1Msg->pitch;
-    ins_data.heading            = I1Msg->heading;
-    ins_data.latitude_std_deviation     = I1Msg->latitude_std_deviation;
-    ins_data.longitude_std_deviation    = I1Msg->longitude_std_deviation;
-    ins_data.height_std_deviation       = I1Msg->height_std_deviation;
-    ins_data.north_vel_std_deviation    = I1Msg->north_vel_std_deviation;
-    ins_data.east_vel_std_deviation     = I1Msg->east_vel_std_deviation;
-    ins_data.up_vel_std_deviation       = I1Msg->up_vel_std_deviation;
-    ins_data.roll_std_deviation         = I1Msg->roll_std_deviation;
-    ins_data.pitch_std_deviation        = I1Msg->pitch_std_deviation;
-    ins_data.heading_std_deviation      = I1Msg->heading_std_deviation;
-
-    rtk_pub_ins.publish(ins_data);
-}
-
-/***Handle RTK GNSS Message***/
-void RTKDriver::Handle_RtkGNSSMessage(uint8_t* frame, uint16_t len)
-{
-    // Check size of frame.
-    if (len - 7 != sizeof(stRTKGNSSG1)) // 7: UU (2), packet type(2), playload length(1), crc(2).
-    {
-        ROS_WARN("RTK GNSS Frame size error!");
-        return;
-    }
-
-    stRTKGNSSG1 *G1Msg = (stRTKGNSSG1*)(&frame[5]);
-    openrtk_msg::openrtk_gnss gnss_data;
-
-    gnss_data.header.frame_id = "RTK_GNSS";
-    gnss_data.header.stamp = ros::Time::now();
-
-    /*****to avoid byte alignment problem, 
-     * it's better to Assignment one by one*****/
-    gnss_data.gps_week           = G1Msg->gps_week;
-    gnss_data.gps_millisecs      = G1Msg->gps_millisecs;
-    gnss_data.position_type      = G1Msg->position_type;
-    gnss_data.latitude           = G1Msg->latitude;
-    gnss_data.longitude          = G1Msg->longitude;
-    gnss_data.height             = G1Msg->height;
-    gnss_data.latitude_std_deviation        = G1Msg->latitude_std_deviation;
-    gnss_data.longitude_std_deviation       = G1Msg->longitude_std_deviation;
-    gnss_data.height_std_deviation          = G1Msg->height_std_deviation;
-    gnss_data.num_of_satellites             = G1Msg->num_of_satellites;
-    gnss_data.num_satellite_in_solution     = G1Msg->num_satellite_in_solution;
-    gnss_data.hdop                          = G1Msg->hdop;
-    gnss_data.diffage                       = G1Msg->diffage;
-    gnss_data.north_vel                     = G1Msg->north_vel;
-    gnss_data.east_vel                      = G1Msg->east_vel;
-    gnss_data.up_vel                        = G1Msg->up_vel;
-    gnss_data.north_vel_std_deviation       = G1Msg->north_vel_std_deviation;
-    gnss_data.east_vel_std_deviation        = G1Msg->east_vel_std_deviation;
-    gnss_data.up_vel_std_deviation          = G1Msg->up_vel_std_deviation;
-
-    rtk_pub_gnss.publish(gnss_data);
-}

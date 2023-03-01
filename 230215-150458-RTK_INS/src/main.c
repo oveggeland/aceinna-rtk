@@ -77,19 +77,19 @@ void CreateTasks(void)
     /// Create RTOS tasks:
     // dacq task
     g_sem_imu_data_acq = osSemaphoreCreate(osSemaphore(IMU_DATA_ACQ_SEM), 1);
-    g_sem_rtk_start = osSemaphoreCreate(osSemaphore(RTK_START_SEM), 1);
-    g_sem_rtk_finish = osSemaphoreCreate(osSemaphore(RTK_FINISH_SEM), 1);
-    g_sem_can_data = osSemaphoreCreate(osSemaphore(CAN_DATA_SEM), 1);
+    //g_sem_rtk_start = osSemaphoreCreate(osSemaphore(RTK_START_SEM), 1);
+    //g_sem_rtk_finish = osSemaphoreCreate(osSemaphore(RTK_FINISH_SEM), 1);
+    //g_sem_can_data = osSemaphoreCreate(osSemaphore(CAN_DATA_SEM), 1);
 
-    osThreadDef(IMU_DATA_ACQ_TASK, TaskDataAcquisition, osPriorityRealtime, 0, TASK_IMU_DATA_ACQ_STACK);
-    iD = osThreadCreate(osThread(IMU_DATA_ACQ_TASK), NULL);
-    if (iD == NULL)
-    {
-        while (1)
-            ; 
-    }
+    //osThreadDef(IMU_DATA_ACQ_TASK, TaskDataAcquisition, osPriorityRealtime, 0, TASK_IMU_DATA_ACQ_STACK);
+    //iD = osThreadCreate(osThread(IMU_DATA_ACQ_TASK), NULL);
+    //if (iD == NULL)
+    //{
+    //    while (1)
+    //        ; 
+    //}
 
-    osThreadDef(GNSS_DATA_ACQ_TASK, GnssDataAcqTask, osPriorityBelowNormal, 0, TASK_GNSS_DATA_ACQ_STACK);
+    osThreadDef(GNSS_DATA_ACQ_TASK, GnssDataAcqTask, osPriorityNormal, 0, TASK_GNSS_DATA_ACQ_STACK);
     iD = osThreadCreate(osThread(GNSS_DATA_ACQ_TASK), NULL);
     if (iD == NULL)
     {
@@ -144,12 +144,14 @@ int main(void)
     MX_DMA_Init();
 
     uart_driver_install(UART_DEBUG,&uart_debug_rx_fifo,&huart_debug,460800);
-    uart_driver_install(UART_USER,&uart_user_rx_fifo,&huart_user,460800);
+    //uart_driver_install(UART_USER,&uart_user_rx_fifo,&huart_user,460800);
     uart_driver_install(UART_GPS,&uart_gps_rx_fifo,&huart_gps,460800);
-    uart_driver_install(UART_BT,&uart_bt_rx_fifo,&huart_bt,460800);
+    //uart_driver_install(UART_BT,&uart_bt_rx_fifo,&huart_bt,460800);
     fifo_init(&fifo_user_uart, fifo_user_uart_buf, GPS_BUFF_SIZE);
 
-    // DelayMs(10000);    //Delay, in case the usb driver is not installed on computer
+    LED2_Toggle();
+    DelayMs(10000);    //Delay, in case the usb driver is not installed on computer
+    LED2_Toggle();
 
     ResetForEnterBootMode();  // normal or iap mode
 
