@@ -141,26 +141,49 @@ void RTKDriver::SigintHandler(int sig)
 	ros::shutdown();
 }
 
-void RTKDriver::PublishGNSS(gnss_solution_t* p_gnss){
-    sensor_msgs::NavSatFix gnss_msg;
-
+void RTKDriver::PublishIMU(){
     // Time stamp
-    uint32_t secs = p_gnss->gps_week*SECONDS_IN_WEEK + (uint32_t)(p_gnss->gps_tow / 1000);
-    uint32_t n_secs = (p_gnss->gps_tow - ((uint32_t)(p_gnss->gps_tow / 1000))*1000)*1e6;
+    uint32_t secs = (uint32_t)(m_imu_payload.stamp / 1000);
+    uint32_t n_secs = (m_imu_payload.stamp - secs*1000)*1e6;
     ros::Time stamp(secs, n_secs); // week to seconds, gps_tow to nanoseconds (for simplicity)
 
-    gnss_msg.header.stamp = stamp;
+    m_imu_msg.header.stamp = stamp;
 
-    // Add coordinates
-    gnss_msg.latitude = p_gnss->latitude*RAD2DEG;
-    gnss_msg.longitude = p_gnss->longitude*RAD2DEG;
-    gnss_msg.altitude = p_gnss->height;
+    // Acceleration (m/s2)
+    m_imu_msg.linear_acceleration.x = m_imu_payload.acc_mps2[0];
+    m_imu_msg.linear_acceleration.y = m_imu_payload.acc_mps2[1];
+    m_imu_msg.linear_acceleration.z = m_imu_payload.acc_mps2[2];
 
-    // Covariance
-    gnss_msg.position_covariance_type = sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
+    // Angular rate (rad/s)
+    m_imu_msg.angular_velocity.x = m_imu_payload.rate_rps[0];
+    m_imu_msg.angular_velocity.y = m_imu_payload.rate_rps[1];
+    m_imu_msg.angular_velocity.z = m_imu_payload.rate_rps[2];
+
+    // No orientation estimate
+    m_imu_msg.orientation_covariance[0] = -1;
 
     // Publish
-    m_pub_gnss.publish(gnss_msg);
+    m_pub_imu.publish(m_imu_msg);
+}
+
+void RTKDriver::PublishGNSS(){
+    // Time stamp
+    uint32_t secs = (uint32_t)(m_gnss_payload.stamp / 1000);
+    uint32_t n_secs = (m_gnss_payload.stamp - secs*1000)*1e6;
+    ros::Time stamp(secs, n_secs); // week to seconds, gps_tow to nanoseconds (for simplicity)
+
+    m_gnss_msg.header.stamp = stamp;
+
+    // Add coordinates
+    m_gnss_msg.latitude = m_gnss_payload.latitude*RAD2DEG;
+    m_gnss_msg.longitude = m_gnss_payload.longitude*RAD2DEG;
+    m_gnss_msg.altitude = m_gnss_payload.height;
+
+    // Covariance
+    m_gnss_msg.position_covariance_type = sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
+
+    // Publish
+    m_pub_gnss.publish(m_gnss_msg);
 }
 
 
@@ -169,16 +192,8 @@ void RTKDriver::ThreadGetDataEth(void)
 { 
     uint8_t recvNum = 0;
     uint8_t  recvBuf[RECV_BUFFER_SIZE] = {0};
+    uint16_t recvBuf_head = 0; // Points to a place in the buffer
 
-    gnss_solution_t gnss_data = {0};
-    
-    uint8_t* gnss_payloads[] = {(uint8_t*)&gnss_data.gps_week, (uint8_t*)&gnss_data.gps_tow,
-                                            (uint8_t*)&gnss_data.latitude, (uint8_t*)&gnss_data.longitude, (uint8_t*)&gnss_data.height};
-                                            //(uint8_t*)&gnss_data.std_lat, (uint8_t*)&gnss_data.std_lon, (uint8_t*)&gnss_data.std_hgt}; Don't think this is available
-    uint8_t gnss_payload_sizes[] = {sizeof(gnss_data.gps_week), sizeof(gnss_data.gps_tow),
-                                sizeof(gnss_data.latitude), sizeof(gnss_data.longitude), sizeof(gnss_data.height)};
-                                //sizeof(gnss_data.std_lat), sizeof(gnss_data.std_lon), sizeof(gnss_data.std_hgt)}; Don't think this is available
-    
     while(1)
     {
         memset(recvBuf, 0, sizeof(recvBuf));
@@ -196,20 +211,47 @@ void RTKDriver::ThreadGetDataEth(void)
         } 
 
         else if(strstr((const char*)recvBuf, GNSS_HEADER)){
-            // Wiho we have GNSS data coming in :D
             cout << GNSS_HEADER << endl;
 
-            uint16_t gnss_payload_head = sizeof(GNSS_HEADER);
-            for (uint32_t i = 0; i < sizeof(gnss_payload_sizes); i++){
-                memcpy(gnss_payloads[i], &recvBuf[gnss_payload_head], gnss_payload_sizes[i]);
-                gnss_payload_head = gnss_payload_head + gnss_payload_sizes[i];
-            }
+            recvBuf_head = sizeof(GNSS_HEADER);
 
-            PublishGNSS(&gnss_data); 
+            memcpy(&m_gnss_payload.stamp, &recvBuf[recvBuf_head], sizeof(m_gnss_payload.stamp));
+            recvBuf_head = recvBuf_head + sizeof(m_gnss_payload.stamp);
+
+            memcpy(&m_gnss_payload.latitude, &recvBuf[recvBuf_head], sizeof(m_gnss_payload.latitude));
+            recvBuf_head = recvBuf_head + sizeof(m_gnss_payload.latitude);
+
+            memcpy(&m_gnss_payload.longitude, &recvBuf[recvBuf_head], sizeof(m_gnss_payload.longitude));
+            recvBuf_head = recvBuf_head + sizeof(m_gnss_payload.longitude);
+
+            memcpy(&m_gnss_payload.height, &recvBuf[recvBuf_head], sizeof(m_gnss_payload.height));
+
+            PublishGNSS(); 
         }
 
         else if(strstr((const char*)recvBuf, IMU_HEADER)){
             cout << IMU_HEADER << endl;
+
+            recvBuf_head = sizeof(IMU_HEADER);
+
+            memcpy(&m_imu_payload.stamp, &recvBuf[recvBuf_head], sizeof(m_imu_payload.stamp));
+            recvBuf_head = recvBuf_head + sizeof(m_imu_payload.stamp);
+
+            memcpy(m_imu_payload.acc_mps2, &recvBuf[recvBuf_head], sizeof(m_imu_payload.acc_mps2));
+            recvBuf_head = recvBuf_head + sizeof(m_imu_payload.acc_mps2);
+
+            memcpy(m_imu_payload.rate_rps, &recvBuf[recvBuf_head], sizeof(m_imu_payload.rate_rps));
+            recvBuf_head = recvBuf_head + sizeof(m_imu_payload.rate_rps);
+
+
+            cout << "Acceleration" << endl;
+            cout << m_imu_payload.acc_mps2[0] << ", " << m_imu_payload.acc_mps2[1] << ", " << m_imu_payload.acc_mps2[2] << endl;
+
+            cout << "Angular rate" << endl;
+            cout << m_imu_payload.rate_rps[0] << ", " << m_imu_payload.rate_rps[1] << ", " << m_imu_payload.rate_rps[2] << endl;
+
+            cout << "Time stamp: " << m_imu_payload.stamp << endl << endl;
+            PublishIMU();
         }
 		usleep(1000);
     }

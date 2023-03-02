@@ -27,31 +27,21 @@ using namespace std;
 #include <netinet/in.h>     
 #include <arpa/inet.h>  
 
-// For defining gnss messages
 typedef struct  {
-    uint16_t gps_week;
-    uint32_t gps_tow; // gps Time Of Week, miliseconds
-    uint8_t num_sats; // num of satellites in the solution 
+    int stamp;  // Milliseconds standard time (from 01.01.1970)
 
     double latitude; // latitude ,  degrees 
     double longitude; // longitude,  degrees 
     double height; // above mean sea level [m]
-    double pos_ecef[3];
-    float vel_ned[3]; // velocities,  m/s  NED (North East Down) x, y, z
-    float heading; // [deg]
+} gnss_payload_t;
 
-    float dops[5];
-    float sol_age;
 
-	float std_lat;	//!< latitude standard deviation (m)
-	float std_lon;	//!< longitude standard deviation (m)
-	float std_hgt;	//!< height standard deviation (m)
-    float std_vn;
-    float std_ve;
-    float std_vd;
+typedef struct {
+    int stamp;   // Milliseconds standard time (from 01.01.1970)
 
-    uint8_t rov_n;
-} gnss_solution_t;
+    double acc_mps2[3];  
+    float rate_rps[3];
+} imu_payload_t;
 
 
 class RTKDriver
@@ -64,7 +54,8 @@ public:
     void Stop();
     bool Spin();
 
-    void PublishGNSS(gnss_solution_t* p_gnss);
+    void PublishGNSS();
+    void PublishIMU();
 
     static void SigintHandler(int sig);
     void ThreadGetDataEth(void);
@@ -76,6 +67,12 @@ private:
     ros::NodeHandle m_nh;
     ros::Publisher m_pub_imu;
     ros::Publisher m_pub_gnss;
+
+    sensor_msgs::Imu m_imu_msg;
+    sensor_msgs::NavSatFix m_gnss_msg;
+
+    imu_payload_t m_imu_payload;
+    gnss_payload_t m_gnss_payload;
 
     /*******Eth Port******/
     struct sockaddr_in addr_sensor;  

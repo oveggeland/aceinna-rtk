@@ -37,6 +37,54 @@ limitations under the License.
 #include "car_data.h"
 #include "gnss_data_api.h"
 #include "ins_interface_API.h"
+#include "tcp_driver.h"
+#include "led.h"
+#include "platformAPI.h"
+
+
+typedef struct {
+    int stamp;   // Milliseconds standard time (from 01.01.1970)
+
+    double acc_mps2[3];  
+    float rate_rps[3];
+} imu_payload_t;
+
+imu_payload_t g_imu_payload;
+
+// Globals for sending data
+uint8_t imu_msg_buffer[500] = {0};
+extern client_s driver_data_client;
+
+
+// Helper function for data transmission of IMU data
+static void send_imu_data()
+{
+    // Packet header
+    char header[] = "$IMU";
+    uint8_t header_size = sizeof(header);
+    memcpy(imu_msg_buffer, header, header_size);
+
+    // Fill payload into buffer
+    uint8_t buffer_head = header_size;
+    
+    memcpy(&imu_msg_buffer[buffer_head], &g_imu_payload.stamp, sizeof(g_imu_payload.stamp));
+    buffer_head = buffer_head + sizeof(g_imu_payload.stamp);
+
+    memcpy(&imu_msg_buffer[buffer_head], g_imu_payload.acc_mps2, sizeof(g_imu_payload.acc_mps2));
+    buffer_head = buffer_head + sizeof(g_imu_payload.acc_mps2);
+
+    memcpy(&imu_msg_buffer[buffer_head], g_imu_payload.rate_rps, sizeof(g_imu_payload.rate_rps));
+    buffer_head = buffer_head + sizeof(g_imu_payload.rate_rps);
+    
+    uint8_t total_payload_size = buffer_head - header_size;
+
+
+    // Send packet
+    if(driver_data_client.client_state == CLIENT_STATE_INTERACTIVE)
+    {
+        client_write_data(&driver_data_client, (const uint8_t*)imu_msg_buffer, header_size+total_payload_size, 0x01);
+    }
+}
 
 
 /** ***************************************************************************
@@ -66,25 +114,21 @@ void TaskDataAcquisition(void const *argument)
             // Process timeout here
         }
 
-
-        DRDY_OFF();
+        DRDY_OFF();  // No signal please
         
-        ins_gnss_time_update();
+        // Sample data
         SampleSensorsData();
+        g_imu_payload.stamp = get_time_of_msec();
+
         ApplyFactoryCalibration();
 
-        /* GNSS/INS fusion */
-        ins_fusion();
+        GetAccelData_mPerSecSq(g_imu_payload.acc_mps2);
+        GetRateData_radPerSec(g_imu_payload.rate_rps);
 
-        // ProcessUserCommands();
-        debug_com_process();
+        // Send data
+        send_imu_data();
 
-        /* solution packets output from UART*/
-        //send_continuous_packet();
-
-        /* solution packets output from bluetooth*/
-        //send_ins_to_bt();
-
+        // Debug frequency
+        LED2_Toggle();
     }
 }
-

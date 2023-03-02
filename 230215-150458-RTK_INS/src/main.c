@@ -57,9 +57,6 @@ osSemaphoreDef(RTK_FINISH_SEM);
 osSemaphoreDef(CAN_DATA_SEM);
 
 osSemaphoreId g_sem_imu_data_acq;
-osSemaphoreId g_sem_rtk_start;
-osSemaphoreId g_sem_rtk_finish;
-osSemaphoreId g_sem_can_data;
 
 
 /** ***************************************************************************
@@ -74,28 +71,23 @@ void CreateTasks(void)
 {
     osThreadId iD;
 
-    /// Create RTOS tasks:
-    // dacq task
     g_sem_imu_data_acq = osSemaphoreCreate(osSemaphore(IMU_DATA_ACQ_SEM), 1);
-    //g_sem_rtk_start = osSemaphoreCreate(osSemaphore(RTK_START_SEM), 1);
-    //g_sem_rtk_finish = osSemaphoreCreate(osSemaphore(RTK_FINISH_SEM), 1);
-    //g_sem_can_data = osSemaphoreCreate(osSemaphore(CAN_DATA_SEM), 1);
+    osThreadDef(IMU_DATA_ACQ_TASK, TaskDataAcquisition, osPriorityRealtime, 0, TASK_IMU_DATA_ACQ_STACK);
+    iD = osThreadCreate(osThread(IMU_DATA_ACQ_TASK), NULL);
+    if (iD == NULL)
+    {
+        while (1)
+            ; 
+    }
 
-    //osThreadDef(IMU_DATA_ACQ_TASK, TaskDataAcquisition, osPriorityRealtime, 0, TASK_IMU_DATA_ACQ_STACK);
-    //iD = osThreadCreate(osThread(IMU_DATA_ACQ_TASK), NULL);
-    //if (iD == NULL)
-    //{
-    //    while (1)
-    //        ; 
-    //}
-
+    /*
     osThreadDef(GNSS_DATA_ACQ_TASK, GnssDataAcqTask, osPriorityNormal, 0, TASK_GNSS_DATA_ACQ_STACK);
     iD = osThreadCreate(osThread(GNSS_DATA_ACQ_TASK), NULL);
     if (iD == NULL)
     {
         while (1)
             ;
-    }
+    }*/
 
     // osThreadDef(GNSS_RTK_TASK, RTKTask, osPriorityLow, 0, TASK_GNSS_RTK_STACK);
     // iD = osThreadCreate(osThread(GNSS_RTK_TASK), NULL);

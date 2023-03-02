@@ -107,6 +107,7 @@ void release_sem(osSemaphoreId sem)
 {
     osSemaphoreRelease(sem);
 }
+
 time_t get_time_of_msec()
 {
     return (g_MCU_time.time * 1000 + g_MCU_time.msec);
@@ -116,6 +117,7 @@ volatile mcu_time_base_t* get_mcu_time()
 {
     return &g_MCU_time;
 }
+
 volatile uint32_t usCnt = 0;
 static void timer_isr_if(TIM_HandleTypeDef* timer)
 {
@@ -130,41 +132,12 @@ static void timer_isr_if(TIM_HandleTypeDef* timer)
                 g_MCU_time.time ++;
                 reset_user_packet_divide();
             }
-#ifdef INS_APP
-            if(g_MCU_time.msec % 10 == 0) // 100Hz
+
+            if(usCnt % 100 == 0) // 100Hz
             {
                 release_sem(g_sem_imu_data_acq);
             } 
-#else
-            switch (get_user_packet_rate())
-            {
-            case 200:
-                if(g_MCU_time.msec % 5 == 0) // 200Hz
-                {
-                    release_sem(g_sem_imu_data_acq);
-                }
-                break;
-            case 100:
-                if(g_MCU_time.msec % 10 == 0) // 100Hz
-                {
-                    release_sem(g_sem_imu_data_acq);
-                } 
-                break;            
-            default:
-                if(g_MCU_time.msec % 20 == 0) // 50Hz
-                {
-                    release_sem(g_sem_imu_data_acq);
-                } 
-                break;             
-            }
-#endif
-            if (gUserConfiguration.can_mode == 1) {
-                if(g_MCU_time.msec % 10 == 0) { // 100Hz
-                    release_sem(g_sem_can_data);
-                }
-            }
         }
-
     }
     HAL_TIM_IRQHandler(timer);    
 }
