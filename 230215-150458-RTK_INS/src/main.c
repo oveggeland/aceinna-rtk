@@ -41,20 +41,14 @@ limitations under the License.
 #include "timer.h"
 #include "lwipopts.h"
 #include "spi.h"
-#include "taskCanCommunicationJ1939.h"
+#include "led.h"
 
 osThreadId IMU_DATA_ACQ_TASK;
-// osThreadId GNSS_RTK_TASK;
 osThreadId GNSS_DATA_ACQ_TASK;
 osThreadId ETHERNET_TASK;
-osThreadId CAN1939_TASK;
-#ifdef USE_TCP_DRIVER
-osThreadId TCP_DRIVER_TASK;
-#endif
+
 osSemaphoreDef(IMU_DATA_ACQ_SEM);
-osSemaphoreDef(RTK_START_SEM);
-osSemaphoreDef(RTK_FINISH_SEM);
-osSemaphoreDef(CAN_DATA_SEM);
+
 
 osSemaphoreId g_sem_imu_data_acq;
 
@@ -71,8 +65,10 @@ void CreateTasks(void)
 {
     osThreadId iD;
 
+
     g_sem_imu_data_acq = osSemaphoreCreate(osSemaphore(IMU_DATA_ACQ_SEM), 1);
-    osThreadDef(IMU_DATA_ACQ_TASK, TaskDataAcquisition, osPriorityRealtime, 0, TASK_IMU_DATA_ACQ_STACK);
+
+    osThreadDef(IMU_DATA_ACQ_TASK, TaskDataAcquisition, osPriorityNormal, 0, TASK_IMU_DATA_ACQ_STACK);
     iD = osThreadCreate(osThread(IMU_DATA_ACQ_TASK), NULL);
     if (iD == NULL)
     {
@@ -80,23 +76,15 @@ void CreateTasks(void)
             ; 
     }
 
-    /*
     osThreadDef(GNSS_DATA_ACQ_TASK, GnssDataAcqTask, osPriorityNormal, 0, TASK_GNSS_DATA_ACQ_STACK);
     iD = osThreadCreate(osThread(GNSS_DATA_ACQ_TASK), NULL);
     if (iD == NULL)
     {
         while (1)
             ;
-    }*/
+    }
 
-    // osThreadDef(GNSS_RTK_TASK, RTKTask, osPriorityLow, 0, TASK_GNSS_RTK_STACK);
-    // iD = osThreadCreate(osThread(GNSS_RTK_TASK), NULL);
-    // if (iD == NULL)
-    // {
-    //     while (1)
-    //         ;
-    // }
-
+    
     osThreadDef(ETHERNET_TASK, EthTask, osPriorityNormal, 0, TASK_USERTCP_STACK);
     iD = osThreadCreate(osThread(ETHERNET_TASK), NULL);
     if (iD == NULL)
@@ -104,22 +92,6 @@ void CreateTasks(void)
         while (1)
             ;
     }
-
-    // osThreadDef(TCP_DRIVER_TASK, TcpDriverTask, osPriorityNormal, 0, TASK_USERTCP_STACK);
-    // iD = osThreadCreate(osThread(TCP_DRIVER_TASK), NULL);
-    // if (iD == NULL)
-    // {
-    //     while (1)
-    //         ;
-    // }
-
-    //osThreadDef(CAN1939_TASK, TaskCANCommunicationJ1939, osPriorityLow, 0, TASK_CAN1939_STACK);
-    //iD = osThreadCreate(osThread(CAN1939_TASK), NULL);
-    //if (iD == NULL)
-    //{
-    //    while (1)
-    //        ;
-    //}
 }
 
 
@@ -135,10 +107,8 @@ int main(void)
     BoardInit();
     MX_DMA_Init();
 
-    uart_driver_install(UART_DEBUG,&uart_debug_rx_fifo,&huart_debug,460800);
-    //uart_driver_install(UART_USER,&uart_user_rx_fifo,&huart_user,460800);
     uart_driver_install(UART_GPS,&uart_gps_rx_fifo,&huart_gps,460800);
-    //uart_driver_install(UART_BT,&uart_bt_rx_fifo,&huart_bt,460800);
+
     fifo_init(&fifo_user_uart, fifo_user_uart_buf, GPS_BUFF_SIZE);
 
     LED2_Toggle();
@@ -150,7 +120,6 @@ int main(void)
     InitFactoryCalibration();
     ApplyFactoryConfiguration();
     userInitConfigureUnit(true);
-    ins_init();
 
     int wheeltick_pin_mode = get_wheeltick_pin_mode();
     if (wheeltick_pin_mode == 0) {

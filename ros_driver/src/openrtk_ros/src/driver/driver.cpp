@@ -22,7 +22,7 @@
 
 // Network macros
 #define     LOCAL_PORT 2204
-#define     LOCAL_IP_ADDRESS "192.168.137.69"           //here ,it is your ROS IP ,you should change it
+#define     LOCAL_IP_ADDRESS "192.168.1.69"           //here ,it is your ROS IP ,you should change it
 #define     OPENRTK_GET_HOSTIP      "python3 /home/oskar/aceinna-rtk/ros_driver/src/openrtk_ros/netbios.py"
 
 #define HANDSTR "hello pc i'm openrtk_data"
@@ -226,6 +226,8 @@ void RTKDriver::ThreadGetDataEth(void)
 
             memcpy(&m_gnss_payload.height, &recvBuf[recvBuf_head], sizeof(m_gnss_payload.height));
 
+            cout << m_gnss_payload.stamp << endl;
+
             PublishGNSS(); 
         }
 
@@ -243,14 +245,6 @@ void RTKDriver::ThreadGetDataEth(void)
             memcpy(m_imu_payload.rate_rps, &recvBuf[recvBuf_head], sizeof(m_imu_payload.rate_rps));
             recvBuf_head = recvBuf_head + sizeof(m_imu_payload.rate_rps);
 
-
-            cout << "Acceleration" << endl;
-            cout << m_imu_payload.acc_mps2[0] << ", " << m_imu_payload.acc_mps2[1] << ", " << m_imu_payload.acc_mps2[2] << endl;
-
-            cout << "Angular rate" << endl;
-            cout << m_imu_payload.rate_rps[0] << ", " << m_imu_payload.rate_rps[1] << ", " << m_imu_payload.rate_rps[2] << endl;
-
-            cout << "Time stamp: " << m_imu_payload.stamp << endl << endl;
             PublishIMU();
         }
 		usleep(1000);

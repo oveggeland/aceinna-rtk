@@ -77,9 +77,9 @@ const UserConfigurationStruct gDefaultUserConfig = {
     .rotation_rbvz          = 0.0,
     
     .eth_mode           = ETHMODE_STATIC,
-    .static_ip          = {192, 168, 137, 110},
+    .static_ip          = {192, 168, 1, 110},
 	.static_netmask     = {255, 255, 255, 0},
-	.static_gateway     = {192, 168, 137, 1},
+	.static_gateway     = {192, 168, 1, 1},
 	.mac                = {2, 0, 0, 0, 0, 0},
 
     .station_mode       = MODE_NTRIP_CLIENT,

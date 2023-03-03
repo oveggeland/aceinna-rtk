@@ -43,7 +43,7 @@ limitations under the License.
 
 
 typedef struct {
-    int stamp;   // Milliseconds standard time (from 01.01.1970)
+    uint64_t stamp;   // Milliseconds standard time (from 01.01.1970)
 
     double acc_mps2[3];  
     float rate_rps[3];
@@ -128,7 +128,7 @@ void TaskDataAcquisition(void const *argument)
         // Send data
         send_imu_data();
 
-        // Debug frequency
+        // Notify IMU message
         LED2_Toggle();
     }
 }

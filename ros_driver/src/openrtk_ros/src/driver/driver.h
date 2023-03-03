@@ -28,7 +28,7 @@ using namespace std;
 #include <arpa/inet.h>  
 
 typedef struct  {
-    int stamp;  // Milliseconds standard time (from 01.01.1970)
+    uint64_t stamp;  // Milliseconds standard time (from 01.01.1970)
 
     double latitude; // latitude ,  degrees 
     double longitude; // longitude,  degrees 
@@ -37,7 +37,7 @@ typedef struct  {
 
 
 typedef struct {
-    int stamp;   // Milliseconds standard time (from 01.01.1970)
+    uint64_t stamp;   // Milliseconds standard time (from 01.01.1970)
 
     double acc_mps2[3];  
     float rate_rps[3];

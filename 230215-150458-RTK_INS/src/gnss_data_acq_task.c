@@ -117,11 +117,6 @@ static void _handleGpsMessages(uint8_t *RtcmBuff, int length)
                         }
                     }
                 }
-
-                // else
-                // {
-                //     //printf("r %d\r\n", rtcm->rcv[ROVER].type);
-                // }
             }
             rtcm_decode_completion = 0;
         }
@@ -167,18 +162,11 @@ static void _handleGpsMessages(uint8_t *RtcmBuff, int length)
 
 
 uint8_t frame_data[2048];
-uint8_t gnss_msg_buffer[250];
+uint8_t gnss_msg_buffer[1000];
+uint16_t gnss_msg_buffer_head = 0;
 static uint8_t crc_rev[2] = {0};
 gnss_solution_t *gps_data_from_sta;
 extern client_s driver_data_client;
-
-// Define payload
-uint8_t* gnss_payloads[] = {(uint8_t*)&g_gnss_sol.gps_week, (uint8_t*)&g_gnss_sol.gps_tow,
-                        (uint8_t*)&g_gnss_sol.latitude, (uint8_t*)&g_gnss_sol.longitude, (uint8_t*)&g_gnss_sol.height};
-                        //(uint8_t*)&g_gnss_sol.std_lat, (uint8_t*)&g_gnss_sol.std_lon, (uint8_t*)&g_gnss_sol.std_hgt};
-uint8_t gnss_payload_sizes[] = {sizeof(g_gnss_sol.gps_week), sizeof(g_gnss_sol.gps_tow),
-                            sizeof(g_gnss_sol.latitude), sizeof(g_gnss_sol.longitude), sizeof(g_gnss_sol.height)};
-                            //sizeof(g_gnss_sol.std_lat), sizeof(g_gnss_sol.std_lon), sizeof(g_gnss_sol.std_hgt)};
 
 static int input_gnss_data(unsigned char data)
 {
@@ -259,7 +247,7 @@ static int input_gnss_data(unsigned char data)
             gps_data_from_sta = (gnss_solution_t *)(frame_data);
             if (crc_check == ((crc_rev[1] << 8) | crc_rev[0]))
             {
-                    
+
                 if (gps_data_from_sta->gps_week > 0 && gps_data_from_sta->height >= -1000 &&
                     gps_data_from_sta->latitude * RAD_TO_DEG >= -90.0 && gps_data_from_sta->latitude * RAD_TO_DEG <= 90.0 &&
                     gps_data_from_sta->longitude * RAD_TO_DEG >= -180.0 && gps_data_from_sta->longitude * RAD_TO_DEG <= 180.0) {
@@ -267,11 +255,10 @@ static int input_gnss_data(unsigned char data)
 
                     copy_gnss_result(&g_gnss_sol);
 
+                    gtime_t gt = gpst2time(g_gnss_sol.gps_week, g_gnss_sol.gps_tow * 0.001);
+
                     if (g_gnss_sol.gnss_fix_type == 4 || g_gnss_sol.gnss_fix_type == 5 || g_gnss_sol.gnss_fix_type == 1)
                     {
-                        gtime_t gt = gpst2time(g_gnss_sol.gps_week, g_gnss_sol.gps_tow * 0.001);
-
-
                         if (time_cnt >=3)
                         {
                             input_gnss_time[0] = input_gnss_time[1];
@@ -284,50 +271,45 @@ static int input_gnss_data(unsigned char data)
                             time_cnt ++;
                         }
                         
-                        if(input_gnss_time[2] - input_gnss_time[1] == 1000 && input_gnss_time[1]-input_gnss_time[0] == 1000)
+                        if(input_gnss_time[2] - input_gnss_time[1] == 1000 && input_gnss_time[1]-input_gnss_time[0] == 1000){
                             g_MCU_time.time = gt.time;
-                        
+                            g_MCU_time.msec = 1000 / gt.sec;                        
+                        }
                     }
 
                     LED1_Toggle();
 
-                    // -------------------------- HERE IF FILL THE BUFFER FOR ETHERNET TRANSMISSION OF GNSS DATA --------------------
+                    // -------------------------- HERE I FILL THE BUFFER FOR ETHERNET TRANSMISSION OF GNSS DATA --------------------
                     // Header                   
                     char header[] = "$GNSS";
                     uint8_t header_size = sizeof(header);
                     memcpy(gnss_msg_buffer, header, header_size);
 
+                    // Payload
+                    gnss_msg_buffer_head = header_size;
 
-                    // Fill payload
-                    uint8_t buffer_head = header_size;
-                    for (int i = 0; i < sizeof(gnss_payload_sizes); i++){
-                        memcpy(&gnss_msg_buffer[buffer_head], gnss_payloads[i], gnss_payload_sizes[i]);
-                        buffer_head += gnss_payload_sizes[i];
-                    }
-                    uint8_t total_payload_size = buffer_head - header_size;
+                    uint64_t stamp = (uint64_t) 1000 * (gt.time + gt.sec);
+                    
+                    memcpy(&gnss_msg_buffer[gnss_msg_buffer_head], &stamp, sizeof(stamp));
+                    gnss_msg_buffer_head = gnss_msg_buffer_head + sizeof(stamp);
 
-                    //int msg_length = sprintf(gnss_msg_buffer, "$GNSS, %f, %f, %u, %lu", g_gnss_sol.latitude, g_gnss_sol.longitude, g_gnss_sol.gps_week, g_gnss_sol.gps_tow);
-                    //uint16_t crc = CalculateCRC(&gnss_msg_buffer[header_size], payload_size);
-                    //gnss_msg_buffer[header_size + payload_size] = (crc >> 8);
-                    //gnss_msg_buffer[header_size + payload_size + 1] = crc;
+                    memcpy(&gnss_msg_buffer[gnss_msg_buffer_head], &g_gnss_sol.latitude, sizeof(g_gnss_sol.latitude));
+                    gnss_msg_buffer_head = gnss_msg_buffer_head + sizeof(g_gnss_sol.latitude);
 
+                    memcpy(&gnss_msg_buffer[gnss_msg_buffer_head], &g_gnss_sol.longitude, sizeof(g_gnss_sol.longitude));
+                    gnss_msg_buffer_head = gnss_msg_buffer_head + sizeof(g_gnss_sol.longitude);
+
+                    memcpy(&gnss_msg_buffer[gnss_msg_buffer_head], &g_gnss_sol.height, sizeof(g_gnss_sol.height));
+                    gnss_msg_buffer_head = gnss_msg_buffer_head + sizeof(g_gnss_sol.height);
+                    
+
+                    // Transmitt data
                     if (driver_data_client.client_state == CLIENT_STATE_INTERACTIVE && g_gnss_sol.gnss_fix_type == 1){
-                        client_write_data(&driver_data_client, (const uint8_t*)gnss_msg_buffer, header_size + total_payload_size, 0x01);
+                        client_write_data(&driver_data_client, (const uint8_t*)gnss_msg_buffer, gnss_msg_buffer_head, 0x01);
                     }
-                    //*/
-
-                    if (g_gnss_sol.gnss_fix_type != 0)
-                    {
-                        g_status.status_bit.gnss_signal_status = 1;
-                    }
-                    else
-                    {
-                        g_status.status_bit.gnss_signal_status = 0;
-                    }   
-                } else {
-                    // printf("err %d %lf %lf %lf\r\n", gps_data_from_sta->gps_week, gps_data_from_sta->latitude * RAD_TO_DEG, gps_data_from_sta->longitude * RAD_TO_DEG, gps_data_from_sta->height);
                 }
             }
+
             frame_rev_flag = 0;
             frame_data_len = 0;
             data_rev_index = 0;
@@ -380,21 +362,6 @@ void GnssDataAcqTask(void const *argument)
         {
             parse_gnss_data(Gpsbuf, GpsRxLen);
             no_rx = 0;
-        }
-        else
-        {
-            no_rx++;
-        }
-
-        if (no_rx >= 250)
-        {
-            g_status.status_bit.gnss_data_status = 0;
-            g_status.status_bit.gnss_signal_status = 0;
-            no_rx = 250;
-        }
-        else
-        {
-            g_status.status_bit.gnss_data_status = 1;
         }
 
         OS_Delay(10);
