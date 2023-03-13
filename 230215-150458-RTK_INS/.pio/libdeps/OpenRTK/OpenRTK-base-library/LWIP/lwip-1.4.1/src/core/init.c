@@ -57,6 +57,7 @@
 #include "lwip/timers.h"
 #include "netif/etharp.h"
 #include "lwip/api.h"
+#include "lwip/cc.h"
 
 /* Compile-time sanity checks for configuration errors.
  * These can be done independently of LWIP_DEBUG, without penalty.

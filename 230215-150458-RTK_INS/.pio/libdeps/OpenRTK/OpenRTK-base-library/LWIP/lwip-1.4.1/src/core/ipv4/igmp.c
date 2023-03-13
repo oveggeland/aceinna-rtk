@@ -92,6 +92,7 @@ Steve Reynolds
 #include "lwip/udp.h"
 #include "lwip/tcp.h"
 #include "lwip/stats.h"
+#include "lwip/cc.h"
 
 #include "string.h"
 

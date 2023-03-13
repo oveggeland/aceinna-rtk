@@ -34,6 +34,11 @@
 #define PBUF_POOL_BUFSIZE              512
 
 
+/* ---------- IGMP ---------- */
+#define LWIP_IGMP                      1
+#define LWIP_NETIF_LOOPBACK            1
+#define SO_REUSE                       1
+
 /* ---------- ICMP ---------- */
 #define LWIP_ICMP                      1
 

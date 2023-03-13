@@ -67,6 +67,7 @@ void GnssDataAcqTask(void const *argument);
 void EthTask(void const *argument);
 void RTKTask(void const *argument);
 void TcpDriverTask(void const *argument);
+void PtpTask(void const *argument);
 
 extern osSemaphoreId g_sem_imu_data_acq;
 extern osSemaphoreId g_sem_rtk_start;
@@ -81,6 +82,10 @@ char nema_update_flag;
 
 fifo_type fifo_user_uart;
 uint8_t fifo_user_uart_buf[2000];
+
+
+void debug_led(int led_number);
+
 
 #ifdef __cplusplus
 }
