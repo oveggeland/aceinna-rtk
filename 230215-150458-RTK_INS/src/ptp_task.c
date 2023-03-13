@@ -43,6 +43,8 @@ limitations under the License.
 #include "lwip/tcpip.h"
 #include "lwip/sockets.h"
 
+#include "stm32f4xx_hal.h"
+
 #include "calibrationAPI.h"
 #include "tcp_driver.h"
 
@@ -180,76 +182,66 @@ void fill_followup_message(struct ptp_followup* msg){
 
 
 static void delayReqCb(void *arg, struct udp_pcb * pcb, struct pbuf *p, ip_addr_t *addr, u16_t port){
-    while (1){
-        LED1_Toggle();
-        LED2_Toggle();
-        LED3_Toggle();
-        OS_Delay(200);
-    }
+    LED1_Toggle();
 }
 
-void PtpListener(void const *argument){
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) {
+
+void PtpListener(void const *argument)
+{
+    int s; /*套接字文件描述符*/
+    struct sockaddr_in local_addr; /*本地地址*/
+    int err = -1;
+
+    s = socket(AF_INET, SOCK_DGRAM, 0); /*建立套接字*/
+    if (s == -1) {
         LED2_On();
     }
 
-    // allow multiple sockets to use the same PORT number
-    //
-    int yes = 1;
-    if (
-        setsockopt(
-            fd, SOL_SOCKET, SO_REUSEADDR, (char*) &yes, sizeof(yes)
-        ) < 0
-    ){
-        LED2_On();
-    }
+    /*初始化地址*/
+    memset(&local_addr, 0, sizeof(local_addr));
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_addr.s_addr = INADDR_ANY;
+    local_addr.sin_port = htons(PTP_EVENT_PORT);
 
-    // set up destination address
-    //
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY; // differs from sender
-    addr.sin_port = htons(PTP_EVENT_PORT);
-
-    // bind to receive address
-    //
-    if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
-        LED2_On();
-    }
-
-    // Set loopback
-    int loop = 1;
-    int err = setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
+    /*綁定socket*/
+    err = bind(s, (struct sockaddr*)&local_addr, sizeof(local_addr));
     if (err < 0) {
         LED2_On();
     }
 
-    // use setsockopt() to request that the kernel join a multicast group
-    //
-    struct ip_mreq mreq;
-    mreq.imr_multiaddr.s_addr = inet_addr(IPADDR_PTP);
-    mreq.imr_interface.s_addr = inet_addr("192.168.1.110");
-    if (
-        setsockopt(
-            fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*) &mreq, sizeof(mreq)
-        ) < 0
-    ){
+    /*設置回環許可*/
+    int loop = 1;
+    err = setsockopt(s, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
+    if (err < 0) {
         LED2_On();
-        // debug_led(3);
     }
 
-    // now just enter a read-print loop
-    //
-    int n;
-    char msgbuf[250];
-    while (1) {
-        LED1_Toggle();
-        n = recv(fd, msgbuf, 250, 0);
-        if (n < 0) {
+    struct ip_mreq mreq; /*加入廣播組*/
+    mreq.imr_multiaddr.s_addr = inet_addr(IPADDR_PTP); /*廣播地址*/
+    mreq.imr_interface.s_addr = gnetif.ip_addr.addr; /*網絡接口為默認*/
+    /*將本機加入廣播組*/
+    err = setsockopt(s, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq));
+    if (err < 0) {
+        LED2_On();
+    }
+
+    int BUFF_SIZE = 256;
+    int times = 0;
+    socklen_t addr_len = 0;
+    char buff[BUFF_SIZE];
+    int n = 0;
+    /*循環接收廣播組的消息，5次後退出*/
+    while(1) {
+        addr_len = sizeof(local_addr);
+        memset(buff, 0, BUFF_SIZE); /*清空接收緩衝區*/
+
+        /*接收數據*/
+        n = recv(s, buff, BUFF_SIZE, 0);//, (struct sockaddr*)&local_addr, &addr_len);
+        if (n == -1) {
             LED2_Toggle();
         }
+        /*打印信息*/
+        LED1_Toggle();
     }
 }
 
@@ -278,22 +270,35 @@ void PtpTask(void const *argument)
         LED2_On();
     }
 
-    
+    /*
     osThreadDef(PTP_LISTENER, PtpListener, osPriorityAboveNormal, 0, TASK_USERTCP_STACK);
     osThreadId iD = osThreadCreate(osThread(PTP_LISTENER), NULL);
     if (iD == NULL)
     {
         while (1){
-            LED1_Toggle();
+            LED2_Toggle();
+            OS_Delay(100);
         }
     }
+    */
+
 
     struct udp_pcb *pcb;
     pcb = udp_new();
-    pcb->so_options |= SOF_BROADCAST;
+    // pcb->so_options |= SOF_BROADCAST;
+
+    udp_setflags(pcb, UDP_FLAGS_MULTICAST_LOOP);
+    pcb->multicast_ip = ptp_ip;
 
     udp_bind(pcb, &gnetif.ip_addr, PTP_EVENT_PORT);
-    //udp_recv(pcb, delayReqCb, pcb);
+
+    igmp_start(&gnetif);
+    iret = igmp_joingroup(IP_ADDR_ANY,(struct ip_addr *)(&ptp_ip));
+    if (iret != ERR_OK){
+        LED2_On();
+    }
+
+    udp_recv(pcb, delayReqCb, pcb);
 
     // Create buffer and fill it with standard header
     struct pbuf *q_sync;
@@ -305,19 +310,24 @@ void PtpTask(void const *argument)
     q_followup = pbuf_alloc(PBUF_RAW, sizeof(struct ptp_followup), PBUF_POOL);
     struct ptp_followup* ptp_followup_msg = (struct ptp_followup*)q_followup->payload;
 
-    udp_sendto(pcb,q_sync,&ptp_ip,PTP_EVENT_PORT);
+    // Try to set MAC!!!!!
+    uint32_t* p_mac_ffr = ETH_MAC_BASE + 0x04;
+
+    uint32_t temp = *p_mac_ffr;
+    temp = temp | ETH_MACFFR_RA;
+    *p_mac_ffr = temp;
 
     while (1){
         // Send Sync signal
         fill_sync_message(ptp_sync_msg);
-        udp_sendto(pcb, q_sync, &ptp_ip, PTP_EVENT_PORT);
+        //udp_sendto(pcb, q_sync, &ptp_ip, PTP_EVENT_PORT);
         g_origin_stamp = get_time_of_msec() + 1;
 
         fill_followup_message(ptp_followup_msg);
-        udp_sendto(pcb, q_followup, &ptp_ip, PTP_GENERAL_PORT);
+        //udp_sendto(pcb, q_followup, &ptp_ip, PTP_GENERAL_PORT);
 
         g_seq_id ++;
-        LED2_Toggle();
+        //LED2_Toggle();
         OS_Delay(1000);
     };
 };
