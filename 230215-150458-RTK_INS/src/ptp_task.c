@@ -54,6 +54,9 @@ limitations under the License.
 #define DELAY_RESP_LEN 72
 ip_addr_t ptp_ip;
 
+struct udp_pcb *pcb_event;
+struct udp_pcb *pcb_general;
+
 /* Using reversed endian, copy 'size' bytes from 'src' to 'dest'*/
 void memcpy_reverse_endian(uint8_t* dest, uint8_t* src, size_t size){
     for (int i = 0; i < size; i++){
@@ -212,12 +215,17 @@ static void delayReqCb(void *arg, struct udp_pcb * pcb, struct pbuf *p, ip_addr_
     struct pbuf* q_delayresp = pbuf_alloc(PBUF_RAW, sizeof(struct ptp_delayresp), PBUF_POOL);
     struct ptp_delayresp* p_resp= (struct ptp_delayresp*) q_delayresp->payload;
 
+    // Fill message with all info
     fill_delayresp_message(p_resp, &recv_time, p_srcId, seq_id);
 
-    udp_sendto(pcb, q_delayresp, &ptp_ip, PTP_GENERAL_PORT);
-    LED1_Toggle();
+    // Send over "general msg socket"
+    udp_sendto((struct udp_pcb*) arg, q_delayresp, &ptp_ip, PTP_GENERAL_PORT);
 
+    // Free space (very important)
     pbuf_free(q_delayresp);
+    pbuf_free(p);
+    
+    LED1_Toggle();
 }
 
 /** ***************************************************************************
@@ -242,11 +250,17 @@ void PtpTask(void const *argument)
         LED2_On();
     }
 
-    struct udp_pcb *pcb;
-    pcb = udp_new();
+    pcb_event = udp_new();
+    pcb_general = udp_new();
 
-    udp_bind(pcb, &gnetif.ip_addr, PTP_EVENT_PORT);
-    udp_recv(pcb, delayReqCb, pcb);
+    udp_bind(pcb_event, &gnetif.ip_addr, PTP_EVENT_PORT);
+    udp_bind(pcb_general, &gnetif.ip_addr, PTP_GENERAL_PORT);
+
+    udp_recv(pcb_event, delayReqCb, pcb_general);
+
+
+
+
 
     // Create buffer and fill it with standard header
     struct pbuf *q_sync;
@@ -262,14 +276,13 @@ void PtpTask(void const *argument)
     while (1){
         // Send Sync signal
         fill_sync_message(ptp_sync_msg, seq_id);
-        udp_sendto(pcb, q_sync, &ptp_ip, PTP_EVENT_PORT);
+        udp_sendto(pcb_event, q_sync, &ptp_ip, PTP_EVENT_PORT);
         g_origin_stamp = get_time_of_msec() + 1;
 
         fill_followup_message(ptp_followup_msg, seq_id);
-        udp_sendto(pcb, q_followup, &ptp_ip, PTP_GENERAL_PORT);
+        udp_sendto(pcb_general, q_followup, &ptp_ip, PTP_GENERAL_PORT);
 
         seq_id ++;
-        //LED2_Toggle();
         OS_Delay(1000);
     };
 };
