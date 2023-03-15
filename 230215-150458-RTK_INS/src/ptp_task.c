@@ -1,61 +1,14 @@
-/*****************************************************************************
- * @file   eth_task.c
- *
- * THIS CODE AND INFORMATION ARE PROVIDED "AS IS" WITHOUT WARRANTY OF ANY
- * KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
- * PARTICULAR PURPOSE.
- *
- ******************************************************************************/
-/*******************************************************************************
-Copyright 2020 ACEINNA, INC
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*******************************************************************************/
-#include <string.h>
-
-#include "cmsis_os.h"
-#include "osapi.h"
-#include "FreeRTOS.h"
-#include "aceinna_client_api.h"
-#include "tcp_driver.h"
-#include "calibrationAPI.h"
-
-#include "lwip/opt.h"
-#include "lwip/udp.h"
-#include "lwip/netif.h"
-#include "lwip/ip_addr.h"
-#include "lwip/igmp.h"
-
-#include "lwip/opt.h"
-#include "lwip/dhcp.h"
-#include "lwip/netif.h"
-#include "lwip/tcpip.h"
-#include "lwip/sockets.h"
-
-#include "stm32f4xx_hal.h"
-#include "led.h"
-#include "calibrationAPI.h"
-#include "tcp_driver.h"
+/*
+Barebones implementation of PTP master node
+*/
+#include "ptp.h"
+#include "main.h"
+#include "timer.h"
 
 #define PTP_EVENT_PORT 319
 #define PTP_GENERAL_PORT 320
 #define IPADDR_PTP    "224.0.1.129"
 #define DELAY_RESP_LEN 72
-ip_addr_t ptp_ip;
-
-struct udp_pcb *pcb_event;
-struct udp_pcb *pcb_general;
 
 /* Using reversed endian, copy 'size' bytes from 'src' to 'dest'*/
 void memcpy_reverse_endian(uint8_t* dest, uint8_t* src, size_t size){
@@ -80,56 +33,6 @@ void set_timestamp(uint8_t* dest, uint64_t* msec){
     uint32_t nsecs = (*msec - 1000*secs)*1000000;
     memcpy_reverse_endian(&dest[6], (uint8_t*) &nsecs, 6);
 }
-
-enum ptp_type{
-    PTP_SYNC = 0,
-    PTP_FOLLOWUP = 1,
-    PTP_DELAYRESP = 2,
-};
-
-uint16_t g_seq_id = 0;
-struct ptp_header
-{
-  uint8_t message_type;
-  uint8_t version_ptp;
-  uint8_t msg_length[2];
-  uint8_t domain_number; 
-  uint8_t reserved1;
-  uint8_t flags[2];
-  uint8_t correction_field[8];
-  uint8_t reserved2[4];
-  uint8_t clock_id[8];
-  uint8_t source_port_id[2];
-  uint8_t seq_id[2];
-  uint8_t control_field;
-  uint8_t log_message_interval;
-};
-
-struct ptp_sync
-{
-    uint8_t header[sizeof(struct ptp_header)];
-    uint8_t timestamp[10];
-};
-
-time_t g_origin_stamp = 0;
-struct ptp_followup
-{
-    uint8_t header[sizeof(struct ptp_header)];
-    uint8_t timestamp[10];
-};
-
-struct ptp_delayreq
-{
-    uint8_t header[sizeof(struct ptp_header)];
-    uint8_t timestamp[10];
-};
-
-struct ptp_delayresp
-{
-    uint8_t header[sizeof(struct ptp_header)];
-    uint8_t timestamp[10];
-    uint8_t req_port_id[10];
-};
 
 void init_header(struct ptp_header* header, enum ptp_type msg_type, uint16_t seq_id){
     memset(header, 0, sizeof(struct ptp_header));
@@ -219,14 +122,40 @@ static void delayReqCb(void *arg, struct udp_pcb * pcb, struct pbuf *p, ip_addr_
     fill_delayresp_message(p_resp, &recv_time, p_srcId, seq_id);
 
     // Send over "general msg socket"
-    udp_sendto((struct udp_pcb*) arg, q_delayresp, &ptp_ip, PTP_GENERAL_PORT);
+    udp_sendto(pcb_general, q_delayresp, &ptp_ip, PTP_GENERAL_PORT);
 
     // Free space (very important)
     pbuf_free(q_delayresp);
     pbuf_free(p);
     
+    // Indicate delay response reception (debug)
     LED1_Toggle();
 }
+
+
+void PtpInit(){
+    // Set IP
+    ptp_ip.addr = ipaddr_addr(IPADDR_PTP); 
+
+    // Init IGMP (Not sure if this is needed actually)
+    gnetif.flags |= NETIF_FLAG_IGMP;
+    igmp_init();
+    igmp_start(&gnetif);
+    igmp_joingroup(IP_ADDR_ANY,(struct ip_addr *)(&ptp_ip));
+
+    // Create udp sockets
+    pcb_event = udp_new();
+    pcb_general = udp_new();
+
+    udp_bind(pcb_event, &gnetif.ip_addr, PTP_EVENT_PORT);
+    udp_bind(pcb_general, &gnetif.ip_addr, PTP_GENERAL_PORT);
+    udp_recv(pcb_event, delayReqCb, NULL);
+
+    // Set MAC to receive all multicast
+    uint32_t* p_mac_ffr = (uint32_t*) (ETH_MAC_BASE + 0x04);
+    *p_mac_ffr |= ETH_MACFFR_PAM;
+}
+
 
 /** ***************************************************************************
  * @name PtpTask()
@@ -239,28 +168,8 @@ void PtpTask(void const *argument)
 	// Init ethernet
     ethernet_init();
 
-    // Define IP's
-    ptp_ip.addr = ipaddr_addr(IPADDR_PTP); 
-
-    gnetif.flags |= NETIF_FLAG_IGMP;
-    igmp_init();
-    igmp_start(&gnetif);
-    int iret = igmp_joingroup(IP_ADDR_ANY,(struct ip_addr *)(&ptp_ip));
-    if (iret != ERR_OK){
-        LED2_On();
-    }
-
-    pcb_event = udp_new();
-    pcb_general = udp_new();
-
-    udp_bind(pcb_event, &gnetif.ip_addr, PTP_EVENT_PORT);
-    udp_bind(pcb_general, &gnetif.ip_addr, PTP_GENERAL_PORT);
-
-    udp_recv(pcb_event, delayReqCb, pcb_general);
-
-
-
-
+    // Init ptp
+    PtpInit();
 
     // Create buffer and fill it with standard header
     struct pbuf *q_sync;
@@ -272,17 +181,24 @@ void PtpTask(void const *argument)
     q_followup = pbuf_alloc(PBUF_RAW, sizeof(struct ptp_followup), PBUF_POOL);
     struct ptp_followup* ptp_followup_msg = (struct ptp_followup*)q_followup->payload;
 
+    // Initialize infinite PTP loop
     uint16_t seq_id = 0;
+    osStatus res;
     while (1){
+        res = osSemaphoreWait(g_sem_ptp, 1500);
+        if (res != osOK)
+        {
+            continue;
+        }
         // Send Sync signal
         fill_sync_message(ptp_sync_msg, seq_id);
         udp_sendto(pcb_event, q_sync, &ptp_ip, PTP_EVENT_PORT);
-        g_origin_stamp = get_time_of_msec() + 1;
+        g_origin_stamp = get_time_of_msec(); // TODO: Fix this mess
 
+        // Send followup
         fill_followup_message(ptp_followup_msg, seq_id);
         udp_sendto(pcb_general, q_followup, &ptp_ip, PTP_GENERAL_PORT);
 
         seq_id ++;
-        OS_Delay(1000);
     };
 };

@@ -158,13 +158,6 @@ static ip_addr_t     allrouters;
 void
 igmp_init(void)
 {
-  // Try to set MAC!!!!!
-  uint32_t* p_mac_ffr = ETH_MAC_BASE + 0x04;
-
-  uint32_t temp = *p_mac_ffr;
-  temp = temp | ETH_MACFFR_RA;
-  *p_mac_ffr = temp;
-
   LWIP_DEBUGF(IGMP_DEBUG, ("igmp_init: initializing\n"));
 
   IP4_ADDR(&allsystems, 224, 0, 0, 1);

@@ -131,6 +131,7 @@ static void timer_isr_if(TIM_HandleTypeDef* timer)
                 g_MCU_time.msec = 0;
                 g_MCU_time.time ++;
                 reset_user_packet_divide();
+                release_sem(g_sem_ptp);
             }
 
             if(usCnt % 100 == 0) // 100Hz

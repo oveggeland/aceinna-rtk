@@ -73,6 +73,7 @@ extern osSemaphoreId g_sem_imu_data_acq;
 extern osSemaphoreId g_sem_rtk_start;
 extern osSemaphoreId g_sem_rtk_finish;
 extern osSemaphoreId g_sem_can_data;
+extern osSemaphoreId g_sem_ptp;
 
 extern char gga_buff[120];
 extern char gsa_buff[500];

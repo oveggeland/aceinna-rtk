@@ -49,9 +49,11 @@ osThreadId ETHERNET_TASK;
 osThreadId PTP_TASK;
 
 osSemaphoreDef(IMU_DATA_ACQ_SEM);
+osSemaphoreDef(PTP_SEM);
 
 
 osSemaphoreId g_sem_imu_data_acq;
+osSemaphoreId g_sem_ptp;
 
 /**
  * Function to enable easier debugging using LEDs to indicate code flow
@@ -92,6 +94,7 @@ void CreateTasks(void)
 
 
     g_sem_imu_data_acq = osSemaphoreCreate(osSemaphore(IMU_DATA_ACQ_SEM), 1);
+    g_sem_ptp = osSemaphoreCreate(osSemaphore(PTP_SEM), 1);
 
     /*
     osThreadDef(IMU_DATA_ACQ_TASK, TaskDataAcquisition, osPriorityNormal, 0, TASK_IMU_DATA_ACQ_STACK);
