@@ -224,6 +224,9 @@ static err_t low_level_output(struct netif *netif, struct pbuf *p)
             goto error;
         }
 
+        // Oskar
+        q->p_desc = DmaTxDesc;
+
         byteslefttocopy = q->len;
         payloadoffset = 0;
 
@@ -302,6 +305,7 @@ static struct pbuf *low_level_input(struct netif *netif)
     {
         dmarxdesc = EthHandle.RxFrameInfos.FSRxDesc;
         bufferoffset = 0;
+        p->p_desc = dmarxdesc;
 
         for (q = p; q != NULL; q = q->next)
         {

@@ -2,8 +2,8 @@
 Barebones implementation of PTP master node
 */
 #include "ptp.h"
-#include "main.h"
-#include "timer.h"
+#include "ethernetif.h"
+#include <math.h>
 
 #define PTP_EVENT_PORT 319
 #define PTP_GENERAL_PORT 320
@@ -23,15 +23,6 @@ void memset_reverse_endian(uint8_t* dest, uint64_t value, size_t size){
     for (int i = 0; i < size; i++){
         dest[i] = value_pointer[size - 1 - i];
     }
-}
-
-/* Helper function. This operation is performed by all messages*/
-void set_timestamp(uint8_t* dest, uint64_t* msec){
-    uint64_t secs = (uint64_t) (*msec / 1000);
-    memcpy_reverse_endian(dest, (uint8_t*) &secs, 6);
-
-    uint32_t nsecs = (*msec - 1000*secs)*1000000;
-    memcpy_reverse_endian(&dest[6], (uint8_t*) &nsecs, 6);
 }
 
 void init_header(struct ptp_header* header, enum ptp_type msg_type, uint16_t seq_id){
@@ -72,11 +63,11 @@ void fill_sync_message(struct ptp_sync* msg, uint16_t seq_id){
     init_header((struct ptp_header*) msg, PTP_SYNC, seq_id);
 
     // Set time stamp
-    uint64_t msecs = get_time_of_msec();
-    set_timestamp(msg->timestamp, &msecs);
+    memcpy_reverse_endian(&msg->timestamp[2], (void *) &EthHandle.Instance->PTPTSHR, 4);
+    memcpy_reverse_endian(&msg->timestamp[6], (void *) &EthHandle.Instance->PTPTSLR, 4);
 }
 
-void fill_followup_message(struct ptp_followup* msg, uint16_t seq_id){
+void fill_followup_message(struct ptp_followup* msg, uint16_t seq_id, struct pbuf* p_sync){
     // Zero out message
     memset(msg, 0, sizeof(struct ptp_sync));
 
@@ -84,10 +75,15 @@ void fill_followup_message(struct ptp_followup* msg, uint16_t seq_id){
     init_header((struct ptp_header*) msg, PTP_FOLLOWUP, seq_id);
 
     // Set time stamp
-    set_timestamp(msg->timestamp, (uint64_t*) &g_origin_stamp);
+    //memcpy_reverse_endian(&msg->timestamp[2], (void *) &EthHandle.Instance->PTPTSHR, 4);
+    //memcpy_reverse_endian(&msg->timestamp[6], (void *) &EthHandle.Instance->PTPTSLR, 4);
+    
+    memcpy_reverse_endian(&msg->timestamp[2], &p_sync->p_desc->TimeStampHigh, 4);
+    memcpy_reverse_endian(&msg->timestamp[6], &p_sync->p_desc->TimeStampLow, 4);
+    
 }
 
-void fill_delayresp_message(struct ptp_delayresp* msg, uint64_t* recv_stamp, uint8_t* p_srcId, uint16_t seq_id){
+void fill_delayresp_message(struct ptp_delayresp* msg, uint16_t seq_id, uint8_t* p_srcId, struct pbuf* p_req){
     // Zero out message
     memset(msg, 0, sizeof(struct ptp_delayresp));
 
@@ -95,7 +91,8 @@ void fill_delayresp_message(struct ptp_delayresp* msg, uint64_t* recv_stamp, uin
     init_header((struct ptp_header*) msg, PTP_DELAYRESP, seq_id);
 
     // Set time stamp
-    set_timestamp(msg->timestamp, recv_stamp);
+    memcpy_reverse_endian(&msg->timestamp[2], &p_req->p_desc->TimeStampHigh, 4);
+    memcpy_reverse_endian(&msg->timestamp[6], &p_req->p_desc->TimeStampLow, 4);
 
     // Set source ID
     memcpy(msg->req_port_id, p_srcId, 10);
@@ -119,7 +116,7 @@ static void delayReqCb(void *arg, struct udp_pcb * pcb, struct pbuf *p, ip_addr_
     struct ptp_delayresp* p_resp= (struct ptp_delayresp*) q_delayresp->payload;
 
     // Fill message with all info
-    fill_delayresp_message(p_resp, &recv_time, p_srcId, seq_id);
+    fill_delayresp_message(p_resp, seq_id, p_srcId, p);
 
     // Send over "general msg socket"
     udp_sendto(pcb_general, q_delayresp, &ptp_ip, PTP_GENERAL_PORT);
@@ -128,10 +125,10 @@ static void delayReqCb(void *arg, struct udp_pcb * pcb, struct pbuf *p, ip_addr_
     pbuf_free(q_delayresp);
     pbuf_free(p);
     
-    // Indicate delay response reception (debug)
-    LED1_Toggle();
+    if (p->p_desc->ExtendedStatus & ETH_DMAPTPRXDESC_PTPMT_DELAYREQ){
+        LED2_Toggle(); // Indicate delay req message has been received
+    }
 }
-
 
 void PtpInit(){
     // Set IP
@@ -151,9 +148,35 @@ void PtpInit(){
     udp_bind(pcb_general, &gnetif.ip_addr, PTP_GENERAL_PORT);
     udp_recv(pcb_event, delayReqCb, NULL);
 
-    // Set MAC to receive all multicast
-    uint32_t* p_mac_ffr = (uint32_t*) (ETH_MAC_BASE + 0x04);
-    *p_mac_ffr |= ETH_MACFFR_PAM;
+    // Set ethernet registers
+    ETH_TypeDef* p_eth_reg = EthHandle.Instance;
+    p_eth_reg->MACFFR  |= ETH_MACFFR_PAM;            // Allow all multicast messages
+
+    
+    // Set up DMA for ethernet Rx and Tx  (Follow status bits at (ETH_DMASR))
+    while (p_eth_reg->DMABMR & ETH_DMABMR_SR){ // Wait for software reset to finish
+        LED2_Toggle();
+        OS_Delay(100);
+    }    
+
+    // OSkar test something
+    //EthHandle.TxDesc->Status |= ETH_DMATXDESC_TTSE;
+
+    p_eth_reg->PTPTSCR |= (ETH_PTPTSSR_TSSMRME | ETH_PTPTSSR_TSSPTPOEFE | ETH_PTPTSSR_TSPTPPSV2E | ETH_PTPTSSR_TSSARFE);
+
+    p_eth_reg->MACIMR |= ETH_MACIMR_TSTIM;          // 1. Mask the Time stamp trigger interrupt by setting bit 9 in the MACIMR register.
+    p_eth_reg->PTPTSCR |= ETH_PTPTSCR_TSE;          // 2. Program Time stamp register bit 0 to enable time stamping.
+ 
+    double clk_frec = (double)HAL_RCC_GetHCLKFreq();
+    p_eth_reg->PTPSSIR = (uint32_t) round(0x7FFFFFFF/clk_frec);                        // 3. Program the Subsecond increment register based on the PTP clock frequency.
+    p_eth_reg->PTPTSHUR = 0;                       // 7. Program the Time stamp high update and Time stamp low update registers with the appropriate time value
+    p_eth_reg->PTPTSLUR = 0;                        // 7. Program the Time stamp high update and Time stamp low update registers with the appropriate time value
+    p_eth_reg->PTPTSCR |= ETH_PTPTSCR_TSSTI;        // 8. Set Time stamp control register bit 2 (Time stamp init).
+
+    p_eth_reg->DMAIER |= (ETH_DMAIER_NISE | ETH_DMAIER_RIE | ETH_DMAIER_TIE);
+    p_eth_reg->DMAOMR |= (ETH_DMAOMR_SR | ETH_DMAOMR_ST);
+    p_eth_reg->DMABMR |= ETH_DMABMR_EDE;
+    
 }
 
 
@@ -193,10 +216,9 @@ void PtpTask(void const *argument)
         // Send Sync signal
         fill_sync_message(ptp_sync_msg, seq_id);
         udp_sendto(pcb_event, q_sync, &ptp_ip, PTP_EVENT_PORT);
-        g_origin_stamp = get_time_of_msec(); // TODO: Fix this mess
 
         // Send followup
-        fill_followup_message(ptp_followup_msg, seq_id);
+        fill_followup_message(ptp_followup_msg, seq_id, q_sync);
         udp_sendto(pcb_general, q_followup, &ptp_ip, PTP_GENERAL_PORT);
 
         seq_id ++;

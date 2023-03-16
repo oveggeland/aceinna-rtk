@@ -496,6 +496,9 @@ HAL_StatusTypeDef HAL_ETH_DMATxDescListInit(ETH_HandleTypeDef *heth, ETH_DMADesc
     
     /* Set Second Address Chained bit */
     dmatxdesc->Status = ETH_DMATXDESC_TCH;  
+
+    // Oskar: setting transmit time stamp enable
+    dmatxdesc->Status |= ETH_DMATXDESC_TTSE;
     
     /* Set Buffer1 address pointer */
     dmatxdesc->Buffer1Addr = (uint32_t)(&TxBuff[i*ETH_TX_BUF_SIZE]);

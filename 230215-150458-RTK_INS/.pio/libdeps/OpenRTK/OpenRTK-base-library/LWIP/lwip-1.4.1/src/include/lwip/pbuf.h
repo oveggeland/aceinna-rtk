@@ -35,6 +35,7 @@
 
 #include "lwip/opt.h"
 #include "lwip/err.h"
+#include "stm32f4xx_hal.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -107,6 +108,9 @@ struct pbuf {
    * the stack itself, or pbuf->next pointers from a chain.
    */
   u16_t ref;
+
+  //OSkAR tester
+  ETH_DMADescTypeDef *p_desc;
 };
 
 #if LWIP_SUPPORT_CUSTOM_PBUF
