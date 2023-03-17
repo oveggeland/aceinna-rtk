@@ -40,6 +40,7 @@ enum ptp_type{
     PTP_FOLLOWUP = 1,
     PTP_DELAYRESP = 2,
     PTP_DELAYREQ = 3,
+    PTP_ANNOUNCE = 4,
 };
 
 struct ptp_header
@@ -61,28 +62,60 @@ struct ptp_header
 
 struct ptp_sync
 {
-    uint8_t header[sizeof(struct ptp_header)];
+    struct ptp_header header;
     uint8_t timestamp[10];
 };
 
 time_t g_origin_stamp = 0;
 struct ptp_followup
 {
-    uint8_t header[sizeof(struct ptp_header)];
+    struct ptp_header header;
     uint8_t timestamp[10];
 };
 
 struct ptp_delayreq
 {
-    uint8_t header[sizeof(struct ptp_header)];
+    struct ptp_header header;
     uint8_t timestamp[10];
 };
 
 struct ptp_delayresp
 {
-    uint8_t header[sizeof(struct ptp_header)];
+    struct ptp_header header;
     uint8_t timestamp[10];
     uint8_t req_port_id[10];
 };
+
+struct ptp_announce
+{
+    struct ptp_header header;
+    uint8_t timestamp[10];
+    uint8_t utc_offset[2];
+    uint8_t reserved;
+    uint8_t gmPriority1;
+    uint8_t gmClockClass;
+    uint8_t gmClockAcc;
+    uint8_t gmClockVar[2];
+    uint8_t gmPriority2;
+    uint8_t gmId[8];
+    uint8_t stepsRemoved[2];
+    uint8_t timeSource;
+};
+
+/* Using reversed endian, copy 'size' bytes from 'src' to 'dest'*/
+void memcpy_reverse_endian(uint8_t* dest, uint8_t* src, size_t size){
+    for (int i = 0; i < size; i++){
+        dest[i] = src[size - 1 - i];
+    }
+}
+
+/*Sets the memory pointed at by 'dest', to the value of 'value', which is of a given size 'size'. Reverse the default endian of the computer.*/
+void memset_reverse_endian(uint8_t* dest, uint64_t value, size_t size){
+    uint8_t* value_pointer = (uint8_t*) &value;
+    for (int i = 0; i < size; i++){
+        dest[i] = value_pointer[size - 1 - i];
+    }
+}
+
 
 #endif
