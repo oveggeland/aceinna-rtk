@@ -54,7 +54,8 @@ void fill_sync_message(struct ptp_sync* msg, uint16_t seq_id){
 
     // Set time stamp
     memcpy_reverse_endian(&msg->timestamp[2], (uint8_t *) &EthHandle.Instance->PTPTSHR, 4);
-    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t *) &EthHandle.Instance->PTPTSLR, 4);
+    uint32_t nsecs = (uint32_t) 1000000000* ((double) EthHandle.Instance->PTPTSLR / 0x7FFFFFFF);
+    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &nsecs, 4);
 }
 
 void fill_followup_message(struct ptp_followup* msg, uint16_t seq_id, struct pbuf* p_sync){
@@ -63,7 +64,8 @@ void fill_followup_message(struct ptp_followup* msg, uint16_t seq_id, struct pbu
 
     // Set time stamp
     memcpy_reverse_endian(&msg->timestamp[2], (uint8_t*) &p_sync->p_desc->TimeStampHigh, 4);
-    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &p_sync->p_desc->TimeStampLow, 4);
+    uint32_t nsecs = (uint32_t) 1000000000* ((double) p_sync->p_desc->TimeStampLow / 0x7FFFFFFF);
+    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &nsecs, 4);
     
 }
 
@@ -78,7 +80,8 @@ void fill_delayresp_message(struct ptp_delayresp* msg, struct pbuf* p_req){
 
     // Set time stamp
     memcpy_reverse_endian(&msg->timestamp[2], (uint8_t*) &p_req->p_desc->TimeStampHigh, 4);
-    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &p_req->p_desc->TimeStampLow, 4);
+    uint32_t nsecs = (uint32_t) 1000000000* ((double) p_req->p_desc->TimeStampLow / 0x7FFFFFFF);
+    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &nsecs, 4);
 }
 
 
@@ -88,7 +91,8 @@ void fill_announce_message(struct ptp_announce* msg, uint16_t seq_id){
 
     // Set time stamp
     memcpy_reverse_endian(&msg->timestamp[2], (uint8_t *) &EthHandle.Instance->PTPTSHR, 4);
-    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t *) &EthHandle.Instance->PTPTSLR, 4);
+    uint32_t nsecs = (uint32_t) 1000000000* ((double) EthHandle.Instance->PTPTSLR / 0x7FFFFFFF);
+    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &nsecs, 4);
 
     if (seq_id == 0){
         // Set random stuff based on what I see on ptpd library packages
@@ -151,7 +155,7 @@ void PtpInit(){
  
     double clk_frec = (double)HAL_RCC_GetHCLKFreq();
     p_eth_reg->PTPSSIR = (uint32_t) round(0x7FFFFFFF/clk_frec);                        // 3. Program the Subsecond increment register based on the PTP clock frequency.
-    p_eth_reg->PTPTSHUR = 0;                       // 7. Program the Time stamp high update and Time stamp low update registers with the appropriate time value
+    p_eth_reg->PTPTSHUR = 1679494154;                       // 7. Program the Time stamp high update and Time stamp low update registers with the appropriate time value
     p_eth_reg->PTPTSLUR = 0;                        // 7. Program the Time stamp high update and Time stamp low update registers with the appropriate time value
     p_eth_reg->PTPTSCR |= ETH_PTPTSCR_TSSTI;        // 8. Set Time stamp control register bit 2 (Time stamp init).
 
