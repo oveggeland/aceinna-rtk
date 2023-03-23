@@ -69,14 +69,7 @@ void ethernet_init(void)
 
 	netbios_init();
 
-    /* Initialize webserver */
-	httpd_init(); 
-    
     user_notification(&gnetif);
-
-	/* Start DHCPClient */
-	osThreadDef(DHCP, dhcp_thread, osPriorityLow, 0, TASK_DHCP_STACK);
-	osThreadCreate(osThread(DHCP), &gnetif);
 }
 
 /** ***************************************************************************

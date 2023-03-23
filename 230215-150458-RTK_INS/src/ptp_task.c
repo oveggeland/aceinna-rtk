@@ -9,7 +9,7 @@ Barebones implementation of PTP master node
 #define PTP_GENERAL_PORT 320
 #define IPADDR_PTP    "224.0.1.129"
 #define DELAY_RESP_LEN 72
-#define ANNOUNCE_INTERVAL 2
+#define ANNOUNCE_INTERVAL 0
 
 void init_header(struct ptp_header* header, enum ptp_type msg_type){
     memset(header, 0, sizeof(struct ptp_header));
@@ -111,8 +111,6 @@ void fill_announce_message(struct ptp_announce* msg, uint16_t seq_id){
 static void delayReqCb(void *arg, struct udp_pcb * pcb, struct pbuf *p, ip_addr_t *addr, u16_t port){
     // Check if delay req message has been received
     if (p->p_desc->ExtendedStatus & ETH_DMAPTPRXDESC_PTPMT_DELAYREQ){
-        LED2_Toggle();
-
         struct pbuf* q_delayresp = (struct pbuf*) arg;
 
         // Fill message with all info
@@ -128,6 +126,9 @@ static void delayReqCb(void *arg, struct udp_pcb * pcb, struct pbuf *p, ip_addr_
 }
 
 void PtpInit(){
+    while (gnetif.ip_addr.addr == 0){
+        OS_Delay(100);
+    }
     // Init IGMP (Not sure what of this is needed actually)
     gnetif.flags |= NETIF_FLAG_IGMP;
     igmp_init();
@@ -165,7 +166,6 @@ void PtpInit(){
     
 }
 
-
 /** ***************************************************************************
  * @name PtpTask()
  * @brief Acting as a master clock, synchronizing other sensors to the aceinna GPS based clock
@@ -174,9 +174,6 @@ void PtpInit(){
  ******************************************************************************/
 void PtpTask(void const *argument)
 {
-	// Init ethernet
-    ethernet_init();
-
     // Init ptp
     PtpInit();
 
@@ -195,23 +192,20 @@ void PtpTask(void const *argument)
 
     struct pbuf *q_announce = pbuf_alloc(PBUF_RAW, sizeof(struct ptp_announce), PBUF_POOL);
     struct ptp_announce* ptp_announce_msg = (struct ptp_announce*)q_announce->payload;
-    init_header(&ptp_announce_msg->header, PTP_ANNOUNCE);     // Fill announce msg only once
+    init_header(&ptp_announce_msg->header, PTP_ANNOUNCE);
 
     // Set up UDP callback for delay request messages
     udp_recv(pcb_event, delayReqCb, (void*) q_delayresp);
 
     // Initialize infinite PTP loop
     uint16_t seq_id = 0;
+    
     while (1){
-        if (osSemaphoreWait(g_sem_ptp, 0) != osOK) // Loop at 1Hz
-        {
-            continue;
-        }
+        osSemaphoreWait(g_sem_ptp, osWaitForever); // Loop at 1Hz
 
-        if (seq_id % ANNOUNCE_INTERVAL == 0){  // Announce message at predefined interval
+        if (ANNOUNCE_INTERVAL != 0 && seq_id % ANNOUNCE_INTERVAL == 0){  // Announce message at predefined interval
             fill_announce_message(ptp_announce_msg, seq_id);
             udp_sendto(pcb_general, q_announce, &ptp_ip, PTP_GENERAL_PORT);
-            LED1_Toggle();
         }
 
         // Send Sync signal

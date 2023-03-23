@@ -82,7 +82,8 @@ static void send_imu_data()
     // Send packet
     if(driver_data_client.client_state == CLIENT_STATE_INTERACTIVE)
     {
-        client_write_data(&driver_data_client, (const uint8_t*)imu_msg_buffer, header_size+total_payload_size, 0x01);
+        fifo_push(&driver_data_client.client_tx_fifo, imu_msg_buffer, header_size+total_payload_size);
+        // client_write_data(&driver_data_client, (const uint8_t*)imu_msg_buffer, header_size+total_payload_size, 0x01);
     }
 }
 

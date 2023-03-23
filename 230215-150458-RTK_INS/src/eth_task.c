@@ -40,32 +40,12 @@ limitations under the License.
  ******************************************************************************/
 void EthTask(void const *argument)
 {
-	ethernet_init(); // init ethernet, maybe delay util spp
-    /*
-    while (g_ptr_gnss_sol->gnss_fix_type != 1)
-    {
-        OS_Delay(1000);
-    }
-	*/
-    tcp_driver_data_fifo_init();	
+	ethernet_init(); // init ethernet
+    tcp_driver_data_fifo_init(); // init fifo for package transmission
 
+    // Ethernet state machine loop
 	while (1)
 	{
-        //driver_interface();
         driver_output_data_interface();
-	}
-}
-
-
-void TcpDriverTask(void const *argument)
-{
-    tcp_driver_fifo_init();
-    tcp_driver_data_fifo_init();	
-	while (1)
-	{
-#ifdef  USE_TCP_DRIVER
-        driver_interface();
-        driver_output_data_interface();
-#endif
 	}
 }

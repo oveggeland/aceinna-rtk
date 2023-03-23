@@ -6,7 +6,7 @@ class netbios_query:
         self.name = name
         self.populate()
     def populate(self):
-        self.HOST = '192.168.1.69'
+        self.HOST = '192.168.1.2'
         self.PORT = 137
         self.nqs = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.nqs.setblocking(False)

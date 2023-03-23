@@ -92,42 +92,44 @@ void CreateTasks(void)
 {
     osThreadId iD;
 
-
     g_sem_imu_data_acq = osSemaphoreCreate(osSemaphore(IMU_DATA_ACQ_SEM), 1);
     g_sem_ptp = osSemaphoreCreate(osSemaphore(PTP_SEM), 1);
 
-    /*
+
     osThreadDef(IMU_DATA_ACQ_TASK, TaskDataAcquisition, osPriorityNormal, 0, TASK_IMU_DATA_ACQ_STACK);
     iD = osThreadCreate(osThread(IMU_DATA_ACQ_TASK), NULL);
     if (iD == NULL)
     {
-        while (1)
-            ; 
+        while (1){
+            debug_led(1);
+        };
     }
 
     osThreadDef(GNSS_DATA_ACQ_TASK, GnssDataAcqTask, osPriorityNormal, 0, TASK_GNSS_DATA_ACQ_STACK);
     iD = osThreadCreate(osThread(GNSS_DATA_ACQ_TASK), NULL);
     if (iD == NULL)
     {
-        while (1)
-            ;
+        while (1){
+            debug_led(1);
+        };
     }
+
     osThreadDef(ETHERNET_TASK, EthTask, osPriorityNormal, 0, TASK_USERTCP_STACK);
     iD = osThreadCreate(osThread(ETHERNET_TASK), NULL);
     if (iD == NULL)
     {
-        while (1)
-            ;
+        while (1){
+            debug_led(1);
+        };
     }
-    */
-    /**/
+    
     osThreadDef(PTP_TASK, PtpTask, osPriorityNormal, 0, TASK_USERTCP_STACK);
-
     iD = osThreadCreate(osThread(PTP_TASK), NULL);
     if (iD == NULL)
     {
-        while (1)
-            ;
+        while (1){
+            debug_led(1);
+        };
     }
 }
 

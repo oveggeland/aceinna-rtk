@@ -343,17 +343,6 @@ void netbios_init(void)
     udp_bind(pcb, IP_ADDR_ANY, NETBIOS_PORT);
     udp_recv(pcb, netbios_recv, pcb);
 
-
-    // OSKAR: LOOP AND SEND UDP BROADCAST MESSAGES TO TEST CONNECTION. THIS WORKS!
-    /*
-    struct pbuf *q;
-    q = pbuf_alloc(PBUF_TRANSPORT, sizeof(struct netbios_resp), PBUF_RAM);
-    while (true)
-    {
-      udp_sendto(pcb, q, IP_ADDR_BROADCAST, NETBIOS_PORT);
-      osDelay(500);
-      LED2_Toggle();
-    }*/
   }
 }
 #endif /* LWIP_UDP */

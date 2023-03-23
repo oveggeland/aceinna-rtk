@@ -303,9 +303,10 @@ static int input_gnss_data(unsigned char data)
                     gnss_msg_buffer_head = gnss_msg_buffer_head + sizeof(g_gnss_sol.height);
                     
 
-                    // Transmitt data
-                    if (driver_data_client.client_state == CLIENT_STATE_INTERACTIVE && g_gnss_sol.gnss_fix_type == 1){
-                        client_write_data(&driver_data_client, (const uint8_t*)gnss_msg_buffer, gnss_msg_buffer_head, 0x01);
+                    // Send packet
+                    if(driver_data_client.client_state == CLIENT_STATE_INTERACTIVE)
+                    {
+                        fifo_push(&driver_data_client.client_tx_fifo, gnss_msg_buffer, gnss_msg_buffer_head);
                     }
                 }
             }
