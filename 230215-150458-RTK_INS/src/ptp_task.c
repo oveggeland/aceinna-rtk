@@ -2,14 +2,13 @@
 Barebones implementation of PTP master node
 */
 #include "ptp.h"
-#include "ethernetif.h"
-#include <math.h>
 
 #define PTP_EVENT_PORT 319
 #define PTP_GENERAL_PORT 320
 #define IPADDR_PTP    "224.0.1.129"
 #define DELAY_RESP_LEN 72
 #define ANNOUNCE_INTERVAL 0
+#define REF_FREQ 100000000 // Reference frequency of 10MHz (yields 100ns accurate ptp stamps, or 0.1 micro seconds)
 
 void init_header(struct ptp_header* header, enum ptp_type msg_type){
     memset(header, 0, sizeof(struct ptp_header));
@@ -54,8 +53,7 @@ void fill_sync_message(struct ptp_sync* msg, uint16_t seq_id){
 
     // Set time stamp
     memcpy_reverse_endian(&msg->timestamp[2], (uint8_t *) &EthHandle.Instance->PTPTSHR, 4);
-    uint32_t nsecs = (uint32_t) 1000000000* ((double) EthHandle.Instance->PTPTSLR / 0x7FFFFFFF);
-    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &nsecs, 4);
+    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t *) &EthHandle.Instance->PTPTSLR, 4);
 }
 
 void fill_followup_message(struct ptp_followup* msg, uint16_t seq_id, struct pbuf* p_sync){
@@ -64,8 +62,7 @@ void fill_followup_message(struct ptp_followup* msg, uint16_t seq_id, struct pbu
 
     // Set time stamp
     memcpy_reverse_endian(&msg->timestamp[2], (uint8_t*) &p_sync->p_desc->TimeStampHigh, 4);
-    uint32_t nsecs = (uint32_t) 1000000000* ((double) p_sync->p_desc->TimeStampLow / 0x7FFFFFFF);
-    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &nsecs, 4);
+    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &p_sync->p_desc->TimeStampLow, 4);
     
 }
 
@@ -80,8 +77,7 @@ void fill_delayresp_message(struct ptp_delayresp* msg, struct pbuf* p_req){
 
     // Set time stamp
     memcpy_reverse_endian(&msg->timestamp[2], (uint8_t*) &p_req->p_desc->TimeStampHigh, 4);
-    uint32_t nsecs = (uint32_t) 1000000000* ((double) p_req->p_desc->TimeStampLow / 0x7FFFFFFF);
-    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &nsecs, 4);
+    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &p_req->p_desc->TimeStampLow, 4);
 }
 
 
@@ -91,8 +87,7 @@ void fill_announce_message(struct ptp_announce* msg, uint16_t seq_id){
 
     // Set time stamp
     memcpy_reverse_endian(&msg->timestamp[2], (uint8_t *) &EthHandle.Instance->PTPTSHR, 4);
-    uint32_t nsecs = (uint32_t) 1000000000* ((double) EthHandle.Instance->PTPTSLR / 0x7FFFFFFF);
-    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t*) &nsecs, 4);
+    memcpy_reverse_endian(&msg->timestamp[6], (uint8_t *) &EthHandle.Instance->PTPTSLR, 4);
 
     if (seq_id == 0){
         // Set random stuff based on what I see on ptpd library packages
@@ -154,9 +149,20 @@ void PtpInit(){
     p_eth_reg->MACIMR |= ETH_MACIMR_TSTIM;          // 1. Mask the Time stamp trigger interrupt by setting bit 9 in the MACIMR register.
     p_eth_reg->PTPTSCR |= ETH_PTPTSCR_TSE;          // 2. Program Time stamp register bit 0 to enable time stamping.
  
+    p_eth_reg->PTPTSCR |= ETH_PTPTSSR_TSSSR;
+    p_eth_reg->PTPSSIR = (uint32_t) 0x3B9ACA00 / REF_FREQ;                        // 3. Program the Subsecond increment register based on the PTP clock frequency.
+    /* Setup for fine correction */
     double clk_frec = (double)HAL_RCC_GetHCLKFreq();
-    p_eth_reg->PTPSSIR = (uint32_t) round(0x7FFFFFFF/clk_frec);                        // 3. Program the Subsecond increment register based on the PTP clock frequency.
-    p_eth_reg->PTPTSHUR = 1679494154;                       // 7. Program the Time stamp high update and Time stamp low update registers with the appropriate time value
+    double frec_ratio = clk_frec / REF_FREQ;
+    double freq_comp = pow(2, 32) / frec_ratio;
+    p_eth_reg->PTPTSAR = (uint32_t) freq_comp;  // 4. If you are using the Fine correction method, program the Time stamp addend register
+    p_eth_reg->PTPTSCR |= ETH_PTPTSCR_TSARU;    //  and set Time stamp control register bit 5 (addend register update).
+
+    while(p_eth_reg->PTPTSCR & ETH_PTPTSCR_TSARU); // 5. Poll the Time stamp control register until bit 5 is cleared.
+
+    p_eth_reg->PTPTSCR |= ETH_PTPTSCR_TSFCU; // 6. To select the Fine correction method (if required), program Time stamp control register bit 1.
+
+    p_eth_reg->PTPTSHUR = 0;                       // 7. Program the Time stamp high update and Time stamp low update registers with the appropriate time value
     p_eth_reg->PTPTSLUR = 0;                        // 7. Program the Time stamp high update and Time stamp low update registers with the appropriate time value
     p_eth_reg->PTPTSCR |= ETH_PTPTSCR_TSSTI;        // 8. Set Time stamp control register bit 2 (Time stamp init).
 

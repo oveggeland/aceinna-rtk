@@ -29,6 +29,9 @@
 #include "main.h"
 #include "timer.h"
 
+#include "ethernetif.h"
+#include <math.h>
+
 ip_addr_t ptp_ip;
 
 struct udp_pcb *pcb_event;
@@ -117,5 +120,22 @@ void memset_reverse_endian(uint8_t* dest, uint64_t value, size_t size){
     }
 }
 
+void ptp_set_clk(uint32_t secs, uint32_t nsecs){
+    EthHandle.Instance->PTPTSHUR = secs;                       // 7. Program the Time stamp high update and Time stamp low update registers with the appropriate time value
+    EthHandle.Instance->PTPTSLUR = nsecs;   
+    EthHandle.Instance->PTPTSCR |= ETH_PTPTSCR_TSSTI; 
+    while (EthHandle.Instance->PTPTSCR & ETH_PTPTSCR_TSSTI); 
+};
+
+void ptp_update_clk(int64_t gps_count, int64_t ptp_count){
+    int64_t d_count = gps_count - ptp_count;
+    double frec_scale_factor = (double)(gps_count + d_count) / (ptp_count+1); 
+    uint32_t freq_comp = (uint32_t) (frec_scale_factor * (EthHandle.Instance->PTPTSAR+1));
+
+    EthHandle.Instance->PTPTSAR = freq_comp;  // 4. If you are using the Fine correction method, program the Time stamp addend register
+    EthHandle.Instance->PTPTSCR |= ETH_PTPTSCR_TSARU;    //  and set Time stamp control register     5 (addend register update).
+
+    while(EthHandle.Instance->PTPTSCR & ETH_PTPTSCR_TSARU); // 5. Poll the Time stamp control register until bit 5 is cleared.
+}
 
 #endif

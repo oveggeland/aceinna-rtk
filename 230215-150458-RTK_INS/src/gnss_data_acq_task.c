@@ -38,6 +38,11 @@ limitations under the License.
 #include "ins_interface_API.h"
 #define CCMRAM __attribute__((section(".ccmram")))
 
+// PTP STUFF OSKAR:
+bool ptp_clk_init = false;
+extern void ptp_update_clk(int64_t gps_count, int64_t ptp_count);
+extern void ptp_set_clk(uint32_t secs, uint32_t nsecs);
+
 extern volatile mcu_time_base_t g_MCU_time;
 static uint16_t GpsRxLen;
 
@@ -65,101 +70,6 @@ static uint8_t base_cnt = 0;
 gnss_solution_t g_gnss_sol = {0};
 gnss_solution_t *g_ptr_gnss_sol = &g_gnss_sol;
 // char gsv_buff[1000] = "GSV\r\n";
-/** ***************************************************************************
- * @name _handleGpsMessages()
- * @brief Decode RTCM data and store it in g_gnss_raw_data
- * @param uint8_t *RtcmBuff:RTCM data flow
- *        int length:RTCM data lenth
- * @retval N/A
- ******************************************************************************/
-static void _handleGpsMessages(uint8_t *RtcmBuff, int length)
-{
-    int pos = 0;
-    gnss_rtcm_t *rtcm = &g_gnss_raw_data.rtcm;
-    obs_t *obs = rtcm->obs + stnID;
-    rtcm_t *rcv = rtcm->rcv + stnID;
-    int8_t ret_val = 0;
-    uint32_t crc = 0;
-
-    while (length)
-    {
-        length--;
-        ret_val = input_rtcm3(RtcmBuff[pos++], stnID, rtcm);
-        /* relocated from rtcm.c */
-        if (stnID == BASE && ret_val == 1) //Base station data reception completed
-        {
-            station_tcp_clear_stream_timeout();
-            LED_RTCM_TOOGLE();
-            base_cnt = 0;
-        }
-
-        if (rtcm_decode_completion == 1){
-            if (stnID == ROVER) 
-            {
-                //printf("time: %lld, %lf\r\n", rtcm->rcv[ROVER].time.time, rtcm->rcv[ROVER].time.sec);
-                // ntrip server push rtcm data
-                if (get_station_mode() == MODE_NTRIP_SERVER && base_station_get_run_status() == 1) {
-                    if (rtcm->rcv[ROVER].time.sec < 0.1)
-                    {
-                        if (rtcm->rcv[ROVER].type == 1077 || rtcm->rcv[ROVER].type == 1097 || rtcm->rcv[ROVER].type == 1117
-                            || rtcm->rcv[ROVER].type == 1127 || rtcm->rcv[ROVER].type == 1087)
-                        {
-                            setbitu(rtcm->rcv[ROVER].buff, 36, 12, get_station_id());
-
-                            crc = rtk_crc24q(rtcm->rcv[ROVER].buff, rtcm_decode_length - 3);
-                            setbitu(rtcm->rcv[ROVER].buff, (rtcm_decode_length - 3) * 8, 24, crc);
-
-                            station_tcp_send_data(rtcm->rcv[ROVER].buff, rtcm_decode_length);
-                            // uart_write_bytes(UART_USER, (const char*)rtcm->rcv[ROVER].buff, rtcm_decode_length, 1);
-                            station_tcp_clear_stream_timeout();
-
-                            //printf("rtcm{%lld, %lf} %d\r\n", rtcm->rcv[ROVER].time.time, rtcm->rcv[ROVER].time.sec, rtcm->rcv[ROVER].type);
-                        }
-                    }
-                }
-            }
-            rtcm_decode_completion = 0;
-        }
-
-        if (ret_val == 1)
-        {
-            if (g_pps_flag == 0)
-            {
-                g_MCU_time.time = obs->time.time;
-                g_MCU_time.msec = (obs->time.sec * 1000);
-            }
-
-            if (obs->pos[0] == 0.0 || obs->pos[1] == 0.0 || obs->pos[2] == 0.0)
-            {
-                /* do not output */
-            }
-            else if (stnID == ROVER)
-            {
-                g_obs_rcv_time = g_MCU_time;
-                static gtime_t timeCpy;
-                if ((timeCpy.sec == obs->time.sec && timeCpy.time == obs->time.time) || obs->n < 4)
-                {
-                    gnss_signal_flag = 0;
-                }
-                else
-                {
-                    timeCpy = obs->time;
-                    if (obs->n > 10)
-                        gnss_signal_flag = 1;
-                }
-                uint8_t res = osSemaphoreWait(g_sem_rtk_finish, 0);
-                if (res == osOK && gnss_signal_flag)
-                {
-                    g_ptr_gnss_data->rov = *obs;
-                    g_ptr_gnss_data->ref = *(rtcm->obs + BASE);
-                    g_ptr_gnss_data->nav = rtcm->nav;
-                    osSemaphoreRelease(g_sem_rtk_start);
-                }
-            }
-        }
-    }
-}
-
 
 uint8_t frame_data[2048];
 uint8_t gnss_msg_buffer[1000];
@@ -167,6 +77,20 @@ uint16_t gnss_msg_buffer_head = 0;
 static uint8_t crc_rev[2] = {0};
 gnss_solution_t *gps_data_from_sta;
 extern client_s driver_data_client;
+
+extern ETH_HandleTypeDef EthHandle;  
+int64_t ptp_sec = 0;
+int64_t ptp_nsec = 0;
+int64_t ptp_count = 0;
+int64_t gps_sec = 0;
+int64_t gps_nsec = 0;
+int64_t gps_count = 0;
+
+int64_t new_ptp_sec = 0;
+int64_t new_ptp_nsec = 0;
+
+const static double gpst0[] = { 1980, 1, 6, 0, 0, 0 }; /* gps time reference */
+
 
 static int input_gnss_data(unsigned char data)
 {
@@ -308,6 +232,31 @@ static int input_gnss_data(unsigned char data)
                     {
                         fifo_push(&driver_data_client.client_tx_fifo, gnss_msg_buffer, gnss_msg_buffer_head);
                     }
+
+                    // Update timer!
+                    if (EthHandle.Instance->PTPTSLR | EthHandle.Instance->PTPTSHR){
+                        int64_t new_gps_sec = epoch2time(gpst0).time + SECONDS_IN_WEEK * g_gnss_sol.gps_week + (int) 1e-3*g_gnss_sol.gps_tow;
+                        int64_t new_gps_nsec = 1e6*(g_gnss_sol.gps_tow - 1000*((int) 1e-3*g_gnss_sol.gps_tow));
+                        
+                        if (!ptp_clk_init){
+                            ptp_set_clk(new_gps_sec, new_gps_nsec);
+                            ptp_clk_init = true;
+
+                            new_ptp_sec = EthHandle.Instance->PTPTSHR;
+                            new_ptp_nsec = EthHandle.Instance->PTPTSLR;
+                        }
+                        else{
+                            gps_count = 1e9*(new_gps_sec - gps_sec) + new_gps_nsec - gps_nsec;
+                            ptp_count = 1e9*(new_ptp_sec - ptp_sec) + new_ptp_nsec - ptp_nsec;
+                            ptp_update_clk(gps_count, ptp_count);
+                        }
+
+                        gps_sec = new_gps_sec;
+                        gps_nsec = new_gps_nsec;
+
+                        ptp_sec = new_ptp_sec;
+                        ptp_nsec = new_ptp_nsec;
+                    }
                 }
             }
 
@@ -353,10 +302,11 @@ void GnssDataAcqTask(void const *argument)
 
     while (1)
     {
-
-
         update_fifo_in(UART_GPS);
-        GpsRxLen = uart_read_bytes(UART_GPS, Gpsbuf, GPS_BUFF_SIZE, 0);         
+        GpsRxLen = uart_read_bytes(UART_GPS, Gpsbuf, GPS_BUFF_SIZE, 1000);         
+
+        new_ptp_sec = EthHandle.Instance->PTPTSHR;
+        new_ptp_nsec = EthHandle.Instance->PTPTSLR;
 
         static uint8_t no_rx = 0;
         if (GpsRxLen)

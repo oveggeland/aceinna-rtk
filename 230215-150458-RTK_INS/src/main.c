@@ -161,12 +161,7 @@ int main(void)
     MX_DMA_Init();
 
     uart_driver_install(UART_GPS,&uart_gps_rx_fifo,&huart_gps,460800);
-
     fifo_init(&fifo_user_uart, fifo_user_uart_buf, GPS_BUFF_SIZE);
-
-    LED2_Toggle();
-    DelayMs(10000);    //Delay, in case the usb driver is not installed on computer
-    LED2_Toggle();
 
     ResetForEnterBootMode();  // normal or iap mode
 
@@ -174,20 +169,6 @@ int main(void)
     ApplyFactoryConfiguration();
     userInitConfigureUnit(true);
 
-    int wheeltick_pin_mode = get_wheeltick_pin_mode();
-    if (wheeltick_pin_mode == 0) {
-        /*
-        Encoder input pin initialization
-        Connect encoder PHASE AB, A phase recording pulse, B phase reading direction
-        Encoder pulse count, read direction
-        Now repeat with SPI pin so that only one can be enabled
-        */
-        wt_pulse_detect_init();
-    }
-    else if(wheeltick_pin_mode == 1)
-    {
-        MX_SPI5_Init();
-    }
 
     CreateTasks();
     MX_TIM_SENSOR_Init();
