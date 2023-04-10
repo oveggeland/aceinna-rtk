@@ -271,10 +271,6 @@ void RTKDriver::ThreadGetDataEth(void)
             
             memcpy(&m_temp_payload.temperature, &recvBuf[recvBuf_head], sizeof(m_temp_payload.temperature));
 
-            cout << m_temp_payload.secs << endl;
-            cout << m_temp_payload.nsecs << endl;
-            cout << m_temp_payload.temperature << endl;
-
             PublishTemp();
         }
 		usleep(1000);

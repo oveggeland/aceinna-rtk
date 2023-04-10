@@ -79,15 +79,15 @@ gnss_solution_t *gps_data_from_sta;
 extern client_s driver_data_client;
 
 extern ETH_HandleTypeDef EthHandle;  
-int64_t ptp_sec = 0;
-int64_t ptp_nsec = 0;
-int64_t ptp_count = 0;
-int64_t gps_sec = 0;
-int64_t gps_nsec = 0;
-int64_t gps_count = 0;
+uint32_t ptp_sec = 0;
+uint32_t ptp_nsec = 0;
+uint32_t ptp_count = 0;
+uint32_t gps_sec = 0;
+uint32_t gps_nsec = 0;
+uint32_t gps_count = 0;
 
-int64_t new_ptp_sec = 0;
-int64_t new_ptp_nsec = 0;
+uint32_t new_ptp_sec = 0;
+uint32_t new_ptp_nsec = 0;
 
 const static double gpst0[] = { 1980, 1, 6, 0, 0, 0 }; /* gps time reference */
 
@@ -211,11 +211,12 @@ static int input_gnss_data(unsigned char data)
 
                     // Payload
                     gnss_msg_buffer_head = header_size;
-
-                    uint64_t stamp = (uint64_t) 1000 * (gt.time + gt.sec);
                     
-                    memcpy(&gnss_msg_buffer[gnss_msg_buffer_head], &stamp, sizeof(stamp));
-                    gnss_msg_buffer_head = gnss_msg_buffer_head + sizeof(stamp);
+                    memcpy(&gnss_msg_buffer[gnss_msg_buffer_head], &new_ptp_sec, sizeof(new_ptp_sec));
+                    gnss_msg_buffer_head = gnss_msg_buffer_head + sizeof(new_ptp_sec);
+
+                    memcpy(&gnss_msg_buffer[gnss_msg_buffer_head], &new_ptp_nsec, sizeof(new_ptp_nsec));
+                    gnss_msg_buffer_head = gnss_msg_buffer_head + sizeof(new_ptp_nsec);
 
                     memcpy(&gnss_msg_buffer[gnss_msg_buffer_head], &g_gnss_sol.latitude, sizeof(g_gnss_sol.latitude));
                     gnss_msg_buffer_head = gnss_msg_buffer_head + sizeof(g_gnss_sol.latitude);
