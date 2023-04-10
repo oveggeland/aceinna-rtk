@@ -40,10 +40,12 @@ limitations under the License.
 #include "tcp_driver.h"
 #include "led.h"
 #include "platformAPI.h"
+#include "ethernetif.h"
 
 
 typedef struct {
-    uint64_t stamp;   // Milliseconds standard time (from 01.01.1970)
+    uint32_t secs;
+    uint32_t nsecs;
 
     double acc_mps2[3];  
     float rate_rps[3];
@@ -52,7 +54,7 @@ typedef struct {
 imu_payload_t g_imu_payload;
 
 // Globals for sending data
-uint8_t imu_msg_buffer[500] = {0};
+uint8_t imu_msg_buffer[50] = {0};
 extern client_s driver_data_client;
 
 
@@ -67,22 +69,22 @@ static void send_imu_data()
     // Fill payload into buffer
     uint8_t buffer_head = header_size;
     
-    memcpy(&imu_msg_buffer[buffer_head], &g_imu_payload.stamp, sizeof(g_imu_payload.stamp));
-    buffer_head = buffer_head + sizeof(g_imu_payload.stamp);
+    memcpy(&imu_msg_buffer[buffer_head], &g_imu_payload.secs, sizeof(g_imu_payload.secs));
+    buffer_head = buffer_head + sizeof(g_imu_payload.secs);
+
+    memcpy(&imu_msg_buffer[buffer_head], &g_imu_payload.nsecs, sizeof(g_imu_payload.nsecs));
+    buffer_head = buffer_head + sizeof(g_imu_payload.nsecs);
 
     memcpy(&imu_msg_buffer[buffer_head], g_imu_payload.acc_mps2, sizeof(g_imu_payload.acc_mps2));
     buffer_head = buffer_head + sizeof(g_imu_payload.acc_mps2);
 
     memcpy(&imu_msg_buffer[buffer_head], g_imu_payload.rate_rps, sizeof(g_imu_payload.rate_rps));
     buffer_head = buffer_head + sizeof(g_imu_payload.rate_rps);
-    
-    uint8_t total_payload_size = buffer_head - header_size;
-
 
     // Send packet
     if(driver_data_client.client_state == CLIENT_STATE_INTERACTIVE)
     {
-        fifo_push(&driver_data_client.client_tx_fifo, imu_msg_buffer, header_size+total_payload_size);
+        fifo_push(&driver_data_client.client_tx_fifo, imu_msg_buffer, buffer_head);
         // client_write_data(&driver_data_client, (const uint8_t*)imu_msg_buffer, header_size+total_payload_size, 0x01);
     }
 }
@@ -119,7 +121,8 @@ void TaskDataAcquisition(void const *argument)
         
         // Sample data
         SampleSensorsData();
-        g_imu_payload.stamp = get_time_of_msec();
+        g_imu_payload.secs = EthHandle.Instance->PTPTSHR;
+        g_imu_payload.nsecs = EthHandle.Instance->PTPTSLR;
 
         ApplyFactoryCalibration();
 

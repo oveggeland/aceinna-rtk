@@ -17,6 +17,7 @@ using namespace std;
 #include <signal.h>
 #include <ros/ros.h>
 #include <sensor_msgs/Imu.h>
+#include <sensor_msgs/Temperature.h>
 #include <sensor_msgs/NavSatFix.h>
 #include <tf/transform_broadcaster.h>
 #include "serial/serial.h"
@@ -28,16 +29,25 @@ using namespace std;
 #include <arpa/inet.h>  
 
 typedef struct  {
-    uint64_t stamp;  // Milliseconds standard time (from 01.01.1970)
+    uint32_t secs;
+    uint32_t nsecs;
 
     double latitude; // latitude ,  degrees 
     double longitude; // longitude,  degrees 
     double height; // above mean sea level [m]
 } gnss_payload_t;
 
+typedef struct  {
+    uint32_t secs;
+    uint32_t nsecs;
+
+    double temperature;
+} temp_payload_t;
+
 
 typedef struct {
-    uint64_t stamp;   // Milliseconds standard time (from 01.01.1970)
+    uint32_t secs;
+    uint32_t nsecs;
 
     double acc_mps2[3];  
     float rate_rps[3];
@@ -56,6 +66,7 @@ public:
 
     void PublishGNSS();
     void PublishIMU();
+    void PublishTemp();
 
     static void SigintHandler(int sig);
     void ThreadGetDataEth(void);
@@ -67,12 +78,15 @@ private:
     ros::NodeHandle m_nh;
     ros::Publisher m_pub_imu;
     ros::Publisher m_pub_gnss;
+    ros::Publisher m_pub_temp;
 
     sensor_msgs::Imu m_imu_msg;
     sensor_msgs::NavSatFix m_gnss_msg;
+    sensor_msgs::Temperature m_temp_msg;
 
     imu_payload_t m_imu_payload;
     gnss_payload_t m_gnss_payload;
+    temp_payload_t m_temp_payload;
 
     /*******Eth Port******/
     struct sockaddr_in addr_sensor;  

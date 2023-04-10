@@ -20,6 +20,9 @@
 // Macros for IMU messages
 #define IMU_HEADER "$IMU"
 
+// Macro for Temp messages
+#define TEMP_HEADER "$TEMP"
+
 // Network macros
 #define     LOCAL_PORT 2204
 #define     LOCAL_IP_ADDRESS "192.168.1.2"
@@ -55,6 +58,7 @@ RTKDriver::RTKDriver(ros::NodeHandle nh)
     // Define publishers
     m_pub_imu  = m_nh.advertise<sensor_msgs::Imu>("imu_msg", 100);
     m_pub_gnss = m_nh.advertise<sensor_msgs::NavSatFix>("gnss_msg", 100);
+    m_pub_temp = m_nh.advertise<sensor_msgs::Temperature>("temp_msg", 100);
 }
 
 RTKDriver::~RTKDriver()
@@ -143,11 +147,7 @@ void RTKDriver::SigintHandler(int sig)
 
 void RTKDriver::PublishIMU(){
     // Time stamp
-    uint32_t secs = (uint32_t)(m_imu_payload.stamp / 1000);
-    uint32_t n_secs = (m_imu_payload.stamp - secs*1000)*1e6;
-    ros::Time stamp(secs, n_secs); // week to seconds, gps_tow to nanoseconds (for simplicity)
-
-    m_imu_msg.header.stamp = stamp;
+    m_imu_msg.header.stamp = ros::Time(m_imu_payload.secs, m_imu_payload.nsecs);
 
     // Acceleration (m/s2)
     m_imu_msg.linear_acceleration.x = m_imu_payload.acc_mps2[0];
@@ -168,11 +168,7 @@ void RTKDriver::PublishIMU(){
 
 void RTKDriver::PublishGNSS(){
     // Time stamp
-    uint32_t secs = (uint32_t)(m_gnss_payload.stamp / 1000);
-    uint32_t n_secs = (m_gnss_payload.stamp - secs*1000)*1e6;
-    ros::Time stamp(secs, n_secs); // week to seconds, gps_tow to nanoseconds (for simplicity)
-
-    m_gnss_msg.header.stamp = stamp;
+    m_gnss_msg.header.stamp = ros::Time(m_gnss_payload.secs, m_gnss_payload.nsecs);
 
     // Add coordinates
     m_gnss_msg.latitude = m_gnss_payload.latitude*RAD2DEG;
@@ -184,6 +180,17 @@ void RTKDriver::PublishGNSS(){
 
     // Publish
     m_pub_gnss.publish(m_gnss_msg);
+}
+
+void RTKDriver::PublishTemp(){
+    // Time stamp
+    m_temp_msg.header.stamp = ros::Time(m_temp_payload.secs, m_temp_payload.nsecs);
+
+    // Temperature
+    m_temp_msg.temperature = m_temp_payload.temperature;
+
+    // Publish
+    m_pub_temp.publish(m_temp_msg);
 }
 
 
@@ -215,8 +222,11 @@ void RTKDriver::ThreadGetDataEth(void)
 
             recvBuf_head = sizeof(GNSS_HEADER);
 
-            memcpy(&m_gnss_payload.stamp, &recvBuf[recvBuf_head], sizeof(m_gnss_payload.stamp));
-            recvBuf_head = recvBuf_head + sizeof(m_gnss_payload.stamp);
+            memcpy(&m_gnss_payload.secs, &recvBuf[recvBuf_head], sizeof(m_gnss_payload.secs));
+            recvBuf_head = recvBuf_head + sizeof(m_gnss_payload.secs);
+
+            memcpy(&m_gnss_payload.nsecs, &recvBuf[recvBuf_head], sizeof(m_gnss_payload.nsecs));
+            recvBuf_head = recvBuf_head + sizeof(m_gnss_payload.nsecs);
 
             memcpy(&m_gnss_payload.latitude, &recvBuf[recvBuf_head], sizeof(m_gnss_payload.latitude));
             recvBuf_head = recvBuf_head + sizeof(m_gnss_payload.latitude);
@@ -234,16 +244,38 @@ void RTKDriver::ThreadGetDataEth(void)
 
             recvBuf_head = sizeof(IMU_HEADER);
 
-            memcpy(&m_imu_payload.stamp, &recvBuf[recvBuf_head], sizeof(m_imu_payload.stamp));
-            recvBuf_head = recvBuf_head + sizeof(m_imu_payload.stamp);
+            memcpy(&m_imu_payload.secs, &recvBuf[recvBuf_head], sizeof(m_imu_payload.secs));
+            recvBuf_head = recvBuf_head + sizeof(m_imu_payload.secs);
+
+            memcpy(&m_imu_payload.nsecs, &recvBuf[recvBuf_head], sizeof(m_imu_payload.nsecs));
+            recvBuf_head = recvBuf_head + sizeof(m_imu_payload.nsecs);
 
             memcpy(m_imu_payload.acc_mps2, &recvBuf[recvBuf_head], sizeof(m_imu_payload.acc_mps2));
             recvBuf_head = recvBuf_head + sizeof(m_imu_payload.acc_mps2);
 
             memcpy(m_imu_payload.rate_rps, &recvBuf[recvBuf_head], sizeof(m_imu_payload.rate_rps));
-            recvBuf_head = recvBuf_head + sizeof(m_imu_payload.rate_rps);
 
             PublishIMU();
+        }
+
+        else if(strstr((const char*)recvBuf, TEMP_HEADER)){
+            cout << TEMP_HEADER << endl;
+
+            recvBuf_head = sizeof(TEMP_HEADER);
+            
+            memcpy(&m_temp_payload.secs, &recvBuf[recvBuf_head], sizeof(m_temp_payload.secs));
+            recvBuf_head = recvBuf_head + sizeof(m_temp_payload.secs);
+
+            memcpy(&m_temp_payload.nsecs, &recvBuf[recvBuf_head], sizeof(m_temp_payload.nsecs));
+            recvBuf_head = recvBuf_head + sizeof(m_temp_payload.nsecs);
+            
+            memcpy(&m_temp_payload.temperature, &recvBuf[recvBuf_head], sizeof(m_temp_payload.temperature));
+
+            cout << m_temp_payload.secs << endl;
+            cout << m_temp_payload.nsecs << endl;
+            cout << m_temp_payload.temperature << endl;
+
+            PublishTemp();
         }
 		usleep(1000);
     }
