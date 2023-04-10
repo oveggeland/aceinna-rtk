@@ -47,13 +47,16 @@ osThreadId IMU_DATA_ACQ_TASK;
 osThreadId GNSS_DATA_ACQ_TASK;
 osThreadId ETHERNET_TASK;
 osThreadId PTP_TASK;
+osThreadId TEMP_TASK;
 
 osSemaphoreDef(IMU_DATA_ACQ_SEM);
 osSemaphoreDef(PTP_SEM);
+osSemaphoreDef(TEMP_SEM);
 
 
 osSemaphoreId g_sem_imu_data_acq;
 osSemaphoreId g_sem_ptp;
+osSemaphoreId g_sem_temp;
 
 /**
  * Function to enable easier debugging using LEDs to indicate code flow
@@ -94,6 +97,7 @@ void CreateTasks(void)
 
     g_sem_imu_data_acq = osSemaphoreCreate(osSemaphore(IMU_DATA_ACQ_SEM), 1);
     g_sem_ptp = osSemaphoreCreate(osSemaphore(PTP_SEM), 1);
+    g_sem_temp = osSemaphoreCreate(osSemaphore(TEMP_SEM), 1);
 
 
     osThreadDef(IMU_DATA_ACQ_TASK, TaskDataAcquisition, osPriorityNormal, 0, TASK_IMU_DATA_ACQ_STACK);
@@ -105,6 +109,7 @@ void CreateTasks(void)
         };
     }
 
+    /*
     osThreadDef(GNSS_DATA_ACQ_TASK, GnssDataAcqTask, osPriorityNormal, 0, TASK_GNSS_DATA_ACQ_STACK);
     iD = osThreadCreate(osThread(GNSS_DATA_ACQ_TASK), NULL);
     if (iD == NULL)
@@ -112,7 +117,7 @@ void CreateTasks(void)
         while (1){
             debug_led(1);
         };
-    }
+    }*/
 
     osThreadDef(ETHERNET_TASK, EthTask, osPriorityNormal, 0, TASK_USERTCP_STACK);
     iD = osThreadCreate(osThread(ETHERNET_TASK), NULL);
@@ -122,7 +127,16 @@ void CreateTasks(void)
             debug_led(1);
         };
     }
-    
+
+    osThreadDef(TEMP_TASK, TempTask, osPriorityNormal, 0, 1024);
+    iD = osThreadCreate(osThread(TEMP_TASK), NULL);
+    if (iD == NULL)
+    {
+        while (1){
+            debug_led(1);
+        };
+    }
+    /*
     osThreadDef(PTP_TASK, PtpTask, osPriorityNormal, 0, TASK_USERTCP_STACK);
     iD = osThreadCreate(osThread(PTP_TASK), NULL);
     if (iD == NULL)
@@ -130,7 +144,7 @@ void CreateTasks(void)
         while (1){
             debug_led(1);
         };
-    }
+    }*/
 }
 
 

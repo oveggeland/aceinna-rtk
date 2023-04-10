@@ -68,12 +68,14 @@ void EthTask(void const *argument);
 void RTKTask(void const *argument);
 void TcpDriverTask(void const *argument);
 void PtpTask(void const *argument);
+void TempTask(void const *argument);
 
 extern osSemaphoreId g_sem_imu_data_acq;
 extern osSemaphoreId g_sem_rtk_start;
 extern osSemaphoreId g_sem_rtk_finish;
 extern osSemaphoreId g_sem_can_data;
 extern osSemaphoreId g_sem_ptp;
+extern osSemaphoreId g_sem_temp;
 
 extern char gga_buff[120];
 extern char gsa_buff[500];
