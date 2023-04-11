@@ -24,73 +24,37 @@ limitations under the License.
 ************************************************************************/
 #include <string.h>
 
-#include "gnss_data_api.h"
 #include "uart.h"
-#include "bt_packet.h"
 #include "led.h"
 #include "crc16.h"
-#include "app_version.h"
-#include "stdlib.h"
-#include "ntrip_server.h"
-#include "aceinna_client_api.h"
-#include "station_tcp.h"
 #include "tcp_driver.h"
-#include "ins_interface_API.h"
-#define CCMRAM __attribute__((section(".ccmram")))
 
 // PTP STUFF OSKAR:
 bool ptp_clk_init = false;
 extern void ptp_update_clk(int64_t gps_count, int64_t ptp_count);
 extern void ptp_set_clk(uint32_t secs, uint32_t nsecs);
 
-extern volatile mcu_time_base_t g_MCU_time;
-static uint16_t GpsRxLen;
-
-extern uint8_t g_pps_flag;
-extern uint8_t debug_com_log_on;
-
-CCMRAM gnss_raw_data_t g_gnss_raw_data = {0};
-gnss_raw_data_t *g_ptr_gnss_data = &g_gnss_raw_data;
-uint8_t gnss_signal_flag = 0;   //1:Satellite signal availability
-
-uint8_t stnID = 0;
-volatile mcu_time_base_t g_obs_rcv_time;
-
-char gga_buff[120] = {0};
-char gsa_buff[500]  = "GSA\r\n";
-char rmc_buff[200]  = "RMC\r\n";
-char zda_buff[50] = "ZDA\r\n";
-char nema_update_flag = 0;
-
-fifo_type fifo_user_uart;
-uint8_t fifo_user_uart_buf[2000];
-uint8_t gnss_result_cnt = 0;
-static uint8_t base_cnt = 0; 
-
-gnss_solution_t g_gnss_sol = {0};
-gnss_solution_t *g_ptr_gnss_sol = &g_gnss_sol;
-// char gsv_buff[1000] = "GSV\r\n";
-
-uint8_t frame_data[2048];
-uint8_t gnss_msg_buffer[1000];
-uint16_t gnss_msg_buffer_head = 0;
-static uint8_t crc_rev[2] = {0};
-gnss_solution_t *gps_data_from_sta;
-extern client_s driver_data_client;
-
 extern ETH_HandleTypeDef EthHandle;  
-uint32_t ptp_sec = 0;
-uint32_t ptp_nsec = 0;
-uint32_t ptp_count = 0;
-uint32_t gps_sec = 0;
-uint32_t gps_nsec = 0;
-uint32_t gps_count = 0;
+int64_t ptp_sec = 0;
+int64_t ptp_nsec = 0;
+int64_t ptp_count = 0;
+int64_t gps_sec = 0;
+int64_t gps_nsec = 0;
+int64_t gps_count = 0;
 
 uint32_t new_ptp_sec = 0;
 uint32_t new_ptp_nsec = 0;
 
-const static double gpst0[] = { 1980, 1, 6, 0, 0, 0 }; /* gps time reference */
+// Data globals
+gnss_solution_t g_gnss_sol = {0};
 
+uint8_t frame_data[2048];
+static uint8_t crc_rev[2] = {0};
+
+// Ethernet stuff
+uint8_t gnss_msg_buffer[1000];
+uint16_t gnss_msg_buffer_head = 0;
+extern client_s driver_data_client;
 
 static int input_gnss_data(unsigned char data)
 {
@@ -167,41 +131,42 @@ static int input_gnss_data(unsigned char data)
         if (crc_rev_index == 2)
         {
             uint16_t crc_check = CalculateCRC(frame_data, frame_data_len - 5 - 2);
-            //printf("crc_ check = %x,crc_rev[0] = %x,crc_rev[1] = %x\r\n",crc_check,crc_rev[0],crc_rev[1]);
-            gps_data_from_sta = (gnss_solution_t *)(frame_data);
+
+            g_gnss_sol = *(gnss_solution_t *)(frame_data);
             if (crc_check == ((crc_rev[1] << 8) | crc_rev[0]))
             {
 
-                if (gps_data_from_sta->gps_week > 0 && gps_data_from_sta->height >= -1000 &&
-                    gps_data_from_sta->latitude * RAD_TO_DEG >= -90.0 && gps_data_from_sta->latitude * RAD_TO_DEG <= 90.0 &&
-                    gps_data_from_sta->longitude * RAD_TO_DEG >= -180.0 && gps_data_from_sta->longitude * RAD_TO_DEG <= 180.0) {
-                    g_gnss_sol = *gps_data_from_sta;
+                if (g_gnss_sol.gps_week > 0 && g_gnss_sol.height >= -1000 &&
+                    g_gnss_sol.latitude * RAD_TO_DEG >= -90.0 && g_gnss_sol.latitude * RAD_TO_DEG <= 90.0 &&
+                    g_gnss_sol.longitude * RAD_TO_DEG >= -180.0 && g_gnss_sol.longitude * RAD_TO_DEG <= 180.0) {
 
-                    copy_gnss_result(&g_gnss_sol);
-
-                    gtime_t gt = gpst2time(g_gnss_sol.gps_week, g_gnss_sol.gps_tow * 0.001);
-
-                    if (g_gnss_sol.gnss_fix_type == 4 || g_gnss_sol.gnss_fix_type == 5 || g_gnss_sol.gnss_fix_type == 1)
-                    {
-                        if (time_cnt >=3)
-                        {
-                            input_gnss_time[0] = input_gnss_time[1];
-                            input_gnss_time[1] = input_gnss_time[2];
-                            input_gnss_time[2] = g_gnss_sol.gps_tow;
-                        }
-                        else
-                        {
-                            input_gnss_time[time_cnt] = g_gnss_sol.gps_tow;
-                            time_cnt ++;
-                        }
-                        
-                        if(input_gnss_time[2] - input_gnss_time[1] == 1000 && input_gnss_time[1]-input_gnss_time[0] == 1000){
-                            g_MCU_time.time = gt.time;
-                            g_MCU_time.msec = 1000 / gt.sec;                        
-                        }
-                    }
-
+                    // Wiho valid GNSS data!
                     LED1_Toggle();
+
+                    // Update timer!
+                    if (EthHandle.Instance->PTPTSLR | EthHandle.Instance->PTPTSHR){
+                        int64_t new_gps_sec = UTC_OFFSET + UTC_LEAP_SECONDS + SECONDS_IN_WEEK * g_gnss_sol.gps_week + (int) 1e-3*g_gnss_sol.gps_tow;
+                        int64_t new_gps_nsec = 1e6*(g_gnss_sol.gps_tow - 1000*((int) 1e-3*g_gnss_sol.gps_tow));
+                        
+                        if (!ptp_clk_init){
+                            ptp_set_clk(new_gps_sec, new_gps_nsec);
+                            ptp_clk_init = true;
+
+                            new_ptp_sec = EthHandle.Instance->PTPTSHR;
+                            new_ptp_nsec = EthHandle.Instance->PTPTSLR;
+                        }
+                        else{
+                            gps_count = 1e9*(new_gps_sec - gps_sec) + new_gps_nsec - gps_nsec;
+                            ptp_count = 1e9*((int64_t) new_ptp_sec - ptp_sec) + (int64_t) new_ptp_nsec - ptp_nsec;
+                            ptp_update_clk(gps_count, ptp_count);
+                        }
+
+                        gps_sec = new_gps_sec;
+                        gps_nsec = new_gps_nsec;
+
+                        ptp_sec = (int64_t) new_ptp_sec;
+                        ptp_nsec = (int64_t) new_ptp_nsec;
+                    }
 
                     // -------------------------- HERE I FILL THE BUFFER FOR ETHERNET TRANSMISSION OF GNSS DATA --------------------
                     // Header                   
@@ -233,31 +198,6 @@ static int input_gnss_data(unsigned char data)
                     {
                         fifo_push(&driver_data_client.client_tx_fifo, gnss_msg_buffer, gnss_msg_buffer_head);
                     }
-
-                    // Update timer!
-                    if (EthHandle.Instance->PTPTSLR | EthHandle.Instance->PTPTSHR){
-                        int64_t new_gps_sec = epoch2time(gpst0).time + SECONDS_IN_WEEK * g_gnss_sol.gps_week + (int) 1e-3*g_gnss_sol.gps_tow;
-                        int64_t new_gps_nsec = 1e6*(g_gnss_sol.gps_tow - 1000*((int) 1e-3*g_gnss_sol.gps_tow));
-                        
-                        if (!ptp_clk_init){
-                            ptp_set_clk(new_gps_sec, new_gps_nsec);
-                            ptp_clk_init = true;
-
-                            new_ptp_sec = EthHandle.Instance->PTPTSHR;
-                            new_ptp_nsec = EthHandle.Instance->PTPTSLR;
-                        }
-                        else{
-                            gps_count = 1e9*(new_gps_sec - gps_sec) + new_gps_nsec - gps_nsec;
-                            ptp_count = 1e9*(new_ptp_sec - ptp_sec) + new_ptp_nsec - ptp_nsec;
-                            ptp_update_clk(gps_count, ptp_count);
-                        }
-
-                        gps_sec = new_gps_sec;
-                        gps_nsec = new_gps_nsec;
-
-                        ptp_sec = new_ptp_sec;
-                        ptp_nsec = new_ptp_nsec;
-                    }
                 }
             }
 
@@ -278,9 +218,8 @@ static int input_gnss_data(unsigned char data)
 static void parse_gnss_data(uint8_t *RtcmBuff, int length)
 {
     int pos = 0;
-    while (length)
+    while (length--)
     {
-        length--;
         int ret = input_gnss_data(RtcmBuff[pos++]);
     }
 }
@@ -294,51 +233,22 @@ static void parse_gnss_data(uint8_t *RtcmBuff, int length)
  * @retval N/A
  ******************************************************************************/
 uint8_t Gpsbuf[GPS_BUFF_SIZE];
-uint8_t bt_buff[GPS_BUFF_SIZE];
-extern uint32_t debug_p1_log_delay;
+
 void GnssDataAcqTask(void const *argument)
 {
-    int ret = 0;
-    memset(g_ptr_gnss_data, 0, sizeof(gnss_raw_data_t));
-
     while (1)
     {
         update_fifo_in(UART_GPS);
-        GpsRxLen = uart_read_bytes(UART_GPS, Gpsbuf, GPS_BUFF_SIZE, 1000);         
+        uint16_t GpsRxLen = uart_read_bytes(UART_GPS, Gpsbuf, GPS_BUFF_SIZE, osWaitForever);         
 
         new_ptp_sec = EthHandle.Instance->PTPTSHR;
         new_ptp_nsec = EthHandle.Instance->PTPTSLR;
 
-        static uint8_t no_rx = 0;
         if (GpsRxLen)
         {
             parse_gnss_data(Gpsbuf, GpsRxLen);
-            no_rx = 0;
         }
 
         OS_Delay(10);
     }
 }
-
-/** ***************************************************************************
- * @name get_obs_time()
- * @brief  Acquisition of satellite time
- * @param  N/A
- * @retval N/A
- ******************************************************************************/
-time_t get_obs_time()
-{
-    return g_ptr_gnss_data->rtcm.obs[0].time.time;
-}
-
-/** ***************************************************************************
- * @name get_gnss_signal_flag()
- * @brief  obtain get_gnss_signal_flag
- * @param  N/A
- * @retval N/A
- ******************************************************************************/
-uint8_t get_gnss_signal_flag()
-{
-    return gnss_signal_flag;
-}
-

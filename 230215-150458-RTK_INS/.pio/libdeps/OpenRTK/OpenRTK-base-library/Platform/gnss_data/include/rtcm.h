@@ -17,6 +17,8 @@ extern "C" {
 #endif
 
 #define SECONDS_IN_WEEK (604800)
+#define UTC_OFFSET (315964800)
+#define UTC_LEAP_SECONDS (18)   
 
 #ifdef ARM_MCU
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
